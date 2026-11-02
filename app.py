@@ -65,6 +65,19 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("NETMON_SECRET", os.urandom(32).hex())
 
 
+def _batched(fn):
+    """V11.3 patch 06: run a bulk endpoint's DB writes on ONE connection and ONE commit."""
+    import functools
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        with db.batch():
+            return fn(*a, **kw)
+    return wrapper
+
+
+_LAST_HOST = None
+
+
 @app.before_request
 def _remember_access_host():
     # Same value the welcome-email flow already uses (request.host --
@@ -75,12 +88,18 @@ def _remember_access_host():
     # whichever address the admin most recently accessed the app with,
     # instead of a hardcoded value that goes stale the moment the server's
     # address changes.
+    # V11.3 patch 06: this ran two DB connections plus a CREATE TABLE write on EVERY request (the dashboard polls
+    # every few seconds), fighting the scheduler for the write lock and slowing every Save. Now the DB is only
+    # touched when the host the browser used actually changes.
+    global _LAST_HOST
     if request.endpoint == "static":
         return
     host = request.host
-    if host and host != db.get_system_setting("last_known_host"):
+    if host and host != _LAST_HOST:
         try:
-            db.set_system_setting("last_known_host", host)
+            if host != db.get_system_setting("last_known_host"):
+                db.set_system_setting("last_known_host", host)
+            _LAST_HOST = host
         except Exception:
             pass  # never let this best-effort bookkeeping break a real request
 
@@ -1132,6 +1151,7 @@ def api_update_esc():
     return jsonify({"ok": True})
 
 @app.route("/api/settings/escalation-defaults/apply-all", methods=["POST"])
+@_batched
 def api_apply_esc_all():
     err = _require_admin()
     if err: return err
@@ -1213,6 +1233,7 @@ def api_get_scoped_thresholds():
     return jsonify(config_manager.effective_scoped_thresholds())
 
 @app.route("/api/settings/thresholds/scoped", methods=["POST"])
+@_batched
 def api_set_scoped_thresholds():
     """Body {kind: 'type'|'method', key: 'firewall'|'ssh'|..., thresholds: {metric: {enabled, warning, critical}},
     apply: bool}. Saves the thresholds for every device of that type/method. An empty `thresholds` removes the scope
@@ -1367,6 +1388,37 @@ def api_set_offline_detection():
 def _is_site(device):
     return (device.get("method") or "") == "url"
 
+def _resolve_targets(b):
+    """V11.3 patch 06: which monitors a bulk 'apply' touches. Body is ONE of
+       {ids: [...]}                      a hand-picked list: this device, or the current Devices-page search/filter
+       {kind: 'type'|'method', key: ..}  every monitor of that device type / check method
+       {scope: 'all'|'devices'|'sites'}  everything / everything except websites / websites only (V11.2 behaviour)
+    Returns (devices, label) or raises ValueError with a message safe to show."""
+    devs = config_manager.get_config().get("devices", [])
+    ids = b.get("ids")
+    if ids is not None:
+        if not isinstance(ids, list) or not ids:
+            raise ValueError("No monitors were selected.")
+        want = {str(i) for i in ids}
+        out = [d for d in devs if d["id"] in want]
+        if not out:
+            raise ValueError("None of the selected monitors exist any more.")
+        return out, f"{len(out)} selected"
+    kind = b.get("kind")
+    if kind:
+        key = str(b.get("key") or "").strip()
+        if kind not in threshold_meta.SCOPE_KINDS or not key:
+            raise ValueError("kind must be 'type' or 'method' and key must be given.")
+        out = [d for d in devs if _in_scope(d, kind, key)]
+        if not out:
+            raise ValueError(f"No monitors have {kind} '{key}'.")
+        return out, f"{kind}:{key}"
+    scope = b.get("scope", "all")
+    if scope not in ("all", "devices", "sites"):
+        raise ValueError("scope must be 'all', 'devices' or 'sites'.")
+    return _scope_devices(scope), scope
+
+
 def _scope_devices(scope):
     """Devices matching scope: 'devices' (everything except websites), 'sites' (method url) or 'all'."""
     out = []
@@ -1403,6 +1455,7 @@ def _save_notify_merged(device_id, ex, **changes):
     )
 
 @app.route("/api/settings/thresholds/apply", methods=["POST"])
+@_batched
 def api_apply_thresholds():
     """V11.2: Settings > Thresholds > 'Apply to all devices' / 'Apply to all sites'.
     Body {scope: 'devices'|'sites', thresholds: {metric: {enabled, warning, critical}}}.
@@ -1450,6 +1503,7 @@ def api_apply_thresholds():
     return jsonify({"ok": True, "count": n, "overrides_removed": cleared, "devices_changed": touched})
 
 @app.route("/api/settings/notify-timing/apply", methods=["POST"])
+@_batched
 def api_apply_notify_timing():
     """V11.2: 'Apply wait & cooldown to all devices / only devices / only sites'.
     Body {scope: 'all'|'devices'|'sites', alert_trigger_mode, wait_sec, alert_notify_mode, notify_cooldown_sec}.
@@ -1459,9 +1513,10 @@ def api_apply_notify_timing():
     err = _require_admin()
     if err: return err
     b = request.get_json(force=True) or {}
-    scope = b.get("scope", "all")
-    if scope not in ("all", "devices", "sites"):
-        return jsonify({"ok": False, "error": "scope must be 'all', 'devices' or 'sites'."}), 400
+    try:
+        devs, scope = _resolve_targets(b)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     trig = b.get("alert_trigger_mode", "sustained")
     mode = b.get("alert_notify_mode", "immediate")
     if trig not in ("immediate", "sustained"):
@@ -1482,7 +1537,7 @@ def api_apply_notify_timing():
         wait     = _int("wait_sec", 1, 86400, 60) if trig == "sustained" else None
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
-    devs = _scope_devices(scope); wait_overrides_cleared = 0
+    wait_overrides_cleared = 0
     for d in devs:
         ex = db.get_device_notify(d["id"])
         changes = {"alert_trigger_mode": trig, "alert_notify_mode": mode, "notify_cooldown_sec": cooldown}
@@ -1501,6 +1556,47 @@ def api_apply_notify_timing():
                  f"{len(devs)} monitor(s): trigger={trig}, wait={wait}, repeat={mode}, cooldown={cooldown}")
     return jsonify({"ok": True, "count": len(devs), "scope": scope,
                     "wait_overrides_removed": wait_overrides_cleared})
+
+
+@app.route("/api/devices/thresholds/apply", methods=["POST"])
+@_batched
+def api_apply_device_thresholds():
+    """V11.3 patch 06: write threshold values as each chosen monitor's OWN override.
+    Body {ids:[...] | kind+key | scope, thresholds: {metric: {enabled, warning, critical, wait_sec}}}.
+    Used for 'this device' and 'the monitors in my current search/filter'. Only the metrics SENT are changed;
+    a metric that does not apply to a monitor's check method is skipped for that monitor; every other threshold,
+    email, SMS/call number and escalation setting stays as it is."""
+    err = _require_admin()
+    if err: return err
+    b = request.get_json(force=True) or {}
+    try:
+        devs, label = _resolve_targets(b)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    incoming = b.get("thresholds") or {}
+    if not isinstance(incoming, dict) or not incoming:
+        return jsonify({"ok": False, "error": "Fill in at least one threshold row first."}), 400
+    clean, errs = threshold_meta.validate_thresholds(incoming)
+    if errs:
+        return jsonify({"ok": False, "error": errs[0], "errors": errs}), 400
+    changed = skipped = 0
+    for d in devs:
+        allowed = set(threshold_meta.metrics_for_method(d.get("method") or "ping"))
+        mine = {k: v for k, v in clean.items() if k in allowed}
+        if not mine:
+            skipped += 1
+            continue
+        ex = db.get_device_notify(d["id"]); thr = dict(ex.get("thresholds") or {})
+        for k, row in mine.items():
+            new = dict(row)
+            old = thr.get(k) if isinstance(thr.get(k), dict) else {}
+            if "wait_sec" not in new and old.get("wait_sec") not in (None, ""):
+                new["wait_sec"] = old["wait_sec"]
+            thr[k] = new
+        _save_notify_merged(d["id"], ex, thresholds=thr); changed += 1
+    db.audit_log(_email(), "apply_device_thresholds", label,
+                 f"{changed} monitor(s) changed, {skipped} skipped; metrics: {', '.join(sorted(clean))}")
+    return jsonify({"ok": True, "count": changed, "skipped": skipped, "scope": label})
 
 
 # ── notification templates (admin-editable, per alert state) ──────────────

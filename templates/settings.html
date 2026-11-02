@@ -184,6 +184,7 @@
           <button type="button" class="btn secondary small" onclick="applyTimingBtn('all','esc-g')">All devices &amp; sites</button>
           <button type="button" class="btn secondary small" onclick="applyTimingBtn('devices','esc-g')">Devices only</button>
           <button type="button" class="btn secondary small" onclick="applyTimingBtn('sites','esc-g')">Sites only</button>
+          <button type="button" class="btn secondary small" onclick="applyEscFilter()" title="Applies to the monitors your search / type / method filter above is showing">Current search / filter</button>
         </div>
         <p style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0;">Uses the <em>Alert trigger mode</em>, wait seconds and cooldown shown above (no need to save first). Changes only these timing settings — emails, SMS/call numbers, escalation levels and thresholds stay as they are.</p>
       </div>
@@ -525,6 +526,7 @@
       <div>
         <p style="font-size:13px;font-weight:600;margin-bottom:6px;">Per-metric thresholds</p>
         <div id="snm-thresholds" style="overflow-x:auto;"></div>
+        <div class="apply-timing" id="snm-apply-thr"></div>
       </div>
       <!-- Alert trigger mode -->
       <div class="field" style="border-top:1px solid var(--border);padding-top:12px;">
@@ -565,12 +567,7 @@
             seconds between repeat alerts
           </span>
         </div>
-        <div class="apply-timing">
-          <span class="lbl">Apply wait &amp; cooldown to:</span>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('all','snm')">All devices &amp; sites</button>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('devices','snm')">Devices only</button>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('sites','snm')">Sites only</button>
-        </div>
+        <div class="apply-timing" id="snm-apply-timing"></div>
       </div>
       <!-- Escalation toggles -->
       <div style="border-top:1px solid var(--border);padding-top:12px;">

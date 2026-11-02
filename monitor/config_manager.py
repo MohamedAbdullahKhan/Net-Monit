@@ -10,7 +10,7 @@ config_manager.py — Net-monit V11.3
 Loads config.yaml into memory; writes back on UI changes.
 Fix (V4.0 from V3.5): _save_config was missing (caused 500 on save notifications/thresholds/escalation).
 """
-import os, threading, yaml
+import os, threading, time, yaml
 from pathlib import Path
 from . import database as db
 from . import crypto
@@ -143,8 +143,19 @@ def save_config(cfg):
         if gw_pw and not crypto.is_encrypted(gw_pw):
             disk_cfg[gw_key]["auth_pass"] = crypto.encrypt(gw_pw)
 
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        yaml.dump(disk_cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    # V11.3 patch 06: C-based dumper when available (same output, much faster with many devices) and an atomic
+    # write (temp file + replace) so a crash or antivirus lock can never leave a half-written config.yaml.
+    dumper = getattr(yaml, "CDumper", None) or yaml.Dumper
+    tmp = str(CONFIG_PATH) + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        yaml.dump(disk_cfg, f, Dumper=dumper, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    for attempt in range(5):
+        try:
+            os.replace(tmp, CONFIG_PATH)
+            break
+        except PermissionError:           # Windows: antivirus/indexer briefly holding the file
+            if attempt == 4: raise
+            time.sleep(0.05 * (attempt + 1))
     global _config
     with _lock:
         _config = cfg  # in-memory cache stays plaintext/decrypted

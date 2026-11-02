@@ -1204,3 +1204,7 @@ html, body, .sidebar, .main, .card, .topbar, input, select, textarea, button {
 .dev-group { margin-top:12px; }
 .dev-group-h { font-size:14px; margin:0 0 6px; padding:6px 10px; background:var(--bg-hover); border-radius:var(--radius); }
 .dev-group-h span { color:var(--text-muted); font-weight:400; }
+
+/* V11.3 patch 06: context-aware apply bars */
+.apply-timing .btn .cnt { display:inline-block; min-width:18px; padding:0 6px; margin-left:4px; border-radius:99px; background:var(--accent-subtle, rgba(59,130,246,.15)); color:var(--text-secondary); font-size:11px; font-weight:700; text-align:center; }
+.apply-timing { row-gap:6px; }

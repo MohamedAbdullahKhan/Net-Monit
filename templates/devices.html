@@ -127,6 +127,7 @@
         <p style="font-size:13px;font-weight:600;margin-bottom:6px;">Per-metric thresholds</p>
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Only the metrics that apply to this device are listed. Leave a box blank to use the global default.</p>
         <div id="nm-thresholds" style="overflow-x:auto;"></div>
+        <div class="apply-timing" id="nm-apply-thr"></div>
       </div>
 
       <!-- Alert trigger mode (governs the FIRST alert of a new problem) -->
@@ -168,12 +169,7 @@
             seconds between repeat alerts
           </span>
         </div>
-        <div class="apply-timing">
-          <span class="lbl">Apply wait &amp; cooldown to:</span>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('all','nm')">All devices &amp; sites</button>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('devices','nm')">Devices only</button>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('sites','nm')">Sites only</button>
-        </div>
+        <div class="apply-timing" id="nm-apply-timing"></div>
       </div>
 
       <!-- Escalation (FIX #6) -->

@@ -382,6 +382,7 @@ async function openNotifyModal(deviceId, deviceName){
   renderNotifyEmailPicker(cfg.notify_emails||[]);
   window._nmSavedThr = cfg.thresholds||{};
   renderThresholdRows(cfg.thresholds||{}, deviceId);
+  nmRenderBars(deviceId);
   renderEscLevels(cfg);
 }
 
@@ -615,6 +616,35 @@ document.addEventListener("DOMContentLoaded", ()=>{
     document.getElementById("add-device-form").style.pointerEvents = "none";
   }
 });
+
+// V11.3 patch 06: the "apply to ..." bars of the Notify window are built from the device being edited:
+// this device / same type / same check method / all devices (or all sites) / the current search-or-filter.
+let _nmTargets = [];
+function nmFilterIds(){
+  return [...document.querySelectorAll("#device-list [data-mon-id]")].filter(r => r.style.display !== "none").map(r => r.getAttribute("data-mon-id"));
+}
+async function nmRenderBars(deviceId){
+  const tb = document.getElementById("nm-apply-timing"), hb = document.getElementById("nm-apply-thr");
+  if(tb) tb.innerHTML = ""; if(hb) hb.innerHTML = "";
+  let ctx; try{ ThrUI.resetContext(); ctx = await ThrUI.context(deviceId); }catch(e){ return; }
+  if(deviceId !== _notifyDeviceId) return;
+  const fi = nmFilterIds(), narrowed = fi.length > 0 && fi.length < (_devList||[]).length;
+  _nmTargets = ThrUI.targets(ctx.dev, ctx.facets, narrowed ? fi : null, {every:true, methods:ctx.methodOf});
+  if(tb) tb.innerHTML = ThrUI.barHTML("Apply wait & cooldown to:", _nmTargets, "nmApplyTiming");
+  if(hb) hb.innerHTML = ThrUI.barHTML("Apply the thresholds above to:", _nmTargets.filter(t => t.key !== "all"), "nmApplyThr");
+}
+async function nmApplyTiming(key){
+  const t = _nmTargets.find(x => x.key === key); if(!t) return;
+  try{ const res = await ThrUI.applyTiming(t, "nm"); if(res.cancelled) return; showToast(res.message, res.ok ? "success" : "error"); if(res.ok) ThrUI.resetContext(); }
+  catch(e){ showToast("Apply failed: " + e.message, "error"); }
+}
+async function nmApplyThr(key){
+  const t = _nmTargets.find(x => x.key === key); if(!t) return;
+  const col = collectThresholds();
+  if(col.errors.length){ showToast(col.errors[0], "error"); return; }
+  try{ const res = await ThrUI.applyThr(t, col.thresholds); if(res.cancelled) return; showToast(res.message, res.ok ? "success" : "error"); }
+  catch(e){ showToast("Apply failed: " + e.message, "error"); }
+}
 
 // V11.2: "Apply wait & cooldown to ..." buttons (Escalation tab, notify windows). prefix = id prefix of the 4 timing fields.
 async function applyTimingBtn(scope, prefix){

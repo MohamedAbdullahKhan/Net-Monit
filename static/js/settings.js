@@ -1475,6 +1475,7 @@ async function renderSnmThresholds(saved,deviceId,deviceWaitSec){
   c.innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">${title}. Leave a box blank to use the global value (Settings &gt; Thresholds), then the recommended value shown in grey.</div>`+
     ThrUI.tableHTML(meta,metrics,saved,SNM_IDS,{wait:true,waitPlaceholder:deviceWaitSec})+
     `<div style="margin-top:8px"><button type="button" class="btn secondary small" onclick="snmFillRecommended()">Fill recommended values</button></div>`;
+  snmRenderBars(deviceId);
 }
 function snmFillRecommended(){
   const meta=ThrUI.get(); if(!meta||!window._snmMetrics) return;
@@ -1699,6 +1700,45 @@ document.addEventListener("DOMContentLoaded",()=>{
   v("org-logo-file")       ?.addEventListener("change",_readLogoFile);
   checkAccess();
 });
+
+// V11.3 patch 06: Settings notify window "apply to ..." bars + the Escalation tab's "Current search / filter" button.
+let _snmTargets=[];
+function settVisibleIds(){
+  const pane=[...document.querySelectorAll('[id^="tab-"]')].find(p=>p.offsetParent!==null && p.querySelector("[data-mon-id]"));
+  if(!pane) return [];
+  return [...pane.querySelectorAll("[data-mon-id]")].filter(r=>r.style.display!=="none" && r.offsetParent!==null).map(r=>r.getAttribute("data-mon-id"));
+}
+async function snmRenderBars(deviceId){
+  const tb=v("snm-apply-timing"), hb=v("snm-apply-thr");
+  if(tb) tb.innerHTML=""; if(hb) hb.innerHTML="";
+  let ctx; try{ ThrUI.resetContext(); ctx=await ThrUI.context(deviceId); }catch(e){ return; }
+  if(deviceId!==_snmDeviceId) return;
+  const fi=settVisibleIds(), narrowed=fi.length>0 && fi.length<(ctx.facets.methods||[]).reduce((n,x)=>n+(x.count||0),0);
+  _snmTargets=ThrUI.targets(ctx.dev,ctx.facets,narrowed?fi:null,{every:true,methods:ctx.methodOf});
+  if(tb) tb.innerHTML=ThrUI.barHTML("Apply wait & cooldown to:",_snmTargets,"snmApplyTiming");
+  if(hb) hb.innerHTML=ThrUI.barHTML("Apply the thresholds above to:",_snmTargets.filter(t=>t.key!=="all"),"snmApplyThr");
+}
+async function snmApplyTiming(key){
+  const t=_snmTargets.find(x=>x.key===key); if(!t) return;
+  try{ const res=await ThrUI.applyTiming(t,"snm"); if(res.cancelled) return; showToast(res.message,res.ok?"success":"error"); if(res.ok) ThrUI.resetContext(); }
+  catch(e){ showToast("Apply failed: "+e.message,"error"); }
+}
+async function snmApplyThr(key){
+  const t=_snmTargets.find(x=>x.key===key); if(!t) return;
+  if(!window._snmMetrics||!ThrUI.get()){ showToast("The threshold table is not loaded yet.","error"); return; }
+  const col=ThrUI.collect(ThrUI.get(),window._snmMetrics,SNM_IDS,{wait:true});
+  if(col.errors.length){ showToast(col.errors[0],"error"); return; }
+  try{ const res=await ThrUI.applyThr(t,col.thresholds); if(res.cancelled) return; showToast(res.message,res.ok?"success":"error"); }
+  catch(e){ showToast("Apply failed: "+e.message,"error"); }
+}
+async function applyEscFilter(){
+  const ids=settVisibleIds();
+  if(!ids.length){ showToast("No monitors are showing. Clear or change the search / filter first.","error"); return; }
+  try{
+    const res=await ThrUI.applyTiming({key:"filter",label:"the monitors in your current search / filter",count:ids.length,body:{ids}},"esc-g");
+    if(res.cancelled) return; showToast(res.message,res.ok?"success":"error"); if(res.ok){ loadEscDeviceTable(); }
+  }catch(e){ showToast("Apply failed: "+e.message,"error"); }
+}
 
 // V11.2: "Apply wait & cooldown to ..." buttons (Escalation tab, notify windows). prefix = id prefix of the 4 timing fields.
 async function applyTimingBtn(scope, prefix){

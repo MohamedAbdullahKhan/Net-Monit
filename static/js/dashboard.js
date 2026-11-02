@@ -1236,10 +1236,36 @@ function renderDeviceSettings(meta, data) {
       '<button type="button" class="btn secondary" onclick="resetDeviceSettings()">Use inherited values</button>' +
       '<span id="ds-status" class="ds-status"></span>' +
     '</div>' +
+    '<div class="apply-timing" id="ds-apply-thr"></div>' +
     '<div class="ds-links">' +
       '<a class="btn secondary small" href="/devices#edit=' + id + '">Edit device settings</a> ' +
       '<a class="btn secondary small" href="/devices#notify=' + id + '">Notifications &amp; escalation</a>' +
     '</div>';
+  dsRenderBar(d.id);
+}
+
+// V11.3 patch 06: "apply these thresholds to ..." -- this device / same type / same method / all devices (or sites) /
+// the tiles currently shown on the dashboard (your active category tab and severity filter).
+let _dsTargets = [];
+async function dsRenderBar(deviceId) {
+  const hb = document.getElementById('ds-apply-thr'); if (!hb) return;
+  let ctx; try { ThrUI.resetContext(); ctx = await ThrUI.context(deviceId); } catch (e) { return; }
+  if (deviceId !== _dsDevice) return;
+  const shown = [...document.querySelectorAll('.device-card[data-id]')].filter(c => c.offsetParent !== null).map(c => c.getAttribute('data-id'));
+  const total = (ctx.facets.methods || []).reduce((n, x) => n + (x.count || 0), 0);
+  _dsTargets = ThrUI.targets(ctx.dev, ctx.facets, (shown.length > 1 && shown.length < total) ? shown : null, { methods: ctx.methodOf });
+  const f = _dsTargets.find(t => t.key === 'filter'); if (f) f.label = 'Tiles shown now';
+  hb.innerHTML = ThrUI.barHTML('Apply the thresholds above to:', _dsTargets, 'dsApplyThr');
+}
+async function dsApplyThr(key) {
+  const t = _dsTargets.find(x => x.key === key), meta = ThrUI.get(); if (!t || !meta || !_dsDevice) return;
+  const { thresholds, errors } = ThrUI.collect(meta, _dsKeys, DS_IDS, { wait: true });
+  if (errors.length) { dsStatus(errors[0], false); return; }
+  try {
+    const res = await ThrUI.applyThr(t, thresholds); if (res.cancelled) return;
+    dsStatus(res.message, !!res.ok);
+    if (res.ok) openDeviceSettings(_dsDevice).then(() => dsStatus(res.message, true));
+  } catch (e) { dsStatus('Apply failed: ' + e.message, false); }
 }
 
 function dsStatus(msg, ok) { const e = document.getElementById('ds-status'); if (e) { e.textContent = msg; e.style.color = ok ? 'var(--status-ok)' : 'var(--status-critical)'; } }

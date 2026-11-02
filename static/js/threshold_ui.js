@@ -182,18 +182,19 @@ const ThrUI = (function () {
   function timingPayload(scope, prefix, getEl) {
     getEl = getEl || (id => document.getElementById(id));
     const val = (n) => { const e = getEl(prefix + "-" + n); return e ? e.value : undefined; };
-    return { scope: scope,
+    const tgt = (scope && typeof scope === "object") ? (scope.body || {}) : { scope: scope };   // V11.3 patch 06: target object or legacy scope string
+    return Object.assign({}, tgt, {
              alert_trigger_mode: val("trigger-mode") || "sustained",
              wait_sec: parseInt(val("wait-sec")) || 60,
              alert_notify_mode: val("notify-mode") || "immediate",
-             notify_cooldown_sec: parseInt(val("cooldown-sec")) || 300 };
+             notify_cooldown_sec: parseInt(val("cooldown-sec")) || 300 });
   }
-  function timingConfirmText(p) {
+  function timingConfirmText(p, tgt) {
     const wait = p.alert_trigger_mode === "sustained" ? ("Wait to confirm: alert only if the problem lasts " + p.wait_sec + " seconds")
                                                       : "Immediate: alert the moment a problem is detected";
     const rep  = p.alert_notify_mode === "cooldown" ? ("Repeat alerts: at least " + p.notify_cooldown_sec + " seconds apart")
                                                     : "Repeat alerts: immediate (no extra gap)";
-    return "Apply these settings to " + (TIMING_SCOPE[p.scope] || p.scope) + "?\n\n\u2022 " + wait + "\n\u2022 " + rep +
+    return "Apply these settings to " + (tgt ? (tgt.label + " (" + tgt.count + ")") : (TIMING_SCOPE[p.scope] || p.scope)) + "?\n\n\u2022 " + wait + "\n\u2022 " + rep +
       "\n\nEmails, SMS/call numbers, escalation levels and thresholds are not changed. " +
       (p.alert_trigger_mode === "sustained" ? "Per-metric wait overrides are removed so this wait time really applies." : "");
   }
@@ -201,15 +202,85 @@ const ThrUI = (function () {
     o = o || {};
     const p = timingPayload(scope, prefix, o.getEl);
     const ask = o.confirmFn || ((typeof confirm === "function") ? confirm : () => true);
-    if (!ask(timingConfirmText(p))) return { cancelled: true };
+    if (!ask(timingConfirmText(p, (scope && typeof scope === "object") ? scope : null))) return { cancelled: true };
     const hdr = (typeof authHeaders === "function") ? authHeaders()
               : Object.assign({ "Content-Type": "application/json" }, (typeof getSession === "function") ? { "X-Session-Token": getSession() } : {});
     const f = o.fetchFn || fetch;
     const r = await f("/api/settings/notify-timing/apply", { method: "POST", headers: hdr, body: JSON.stringify(p) });
     let j = {}; try { j = await r.json(); } catch (_) {}
     if (!r.ok || !j.ok) return { ok: false, message: (j && j.error) || ("Apply failed (" + r.status + ")") };
-    const what = scope === "sites" ? "site" : (scope === "devices" ? "device" : "monitor");
+    const what = scope === "sites" ? "site" : (scope === "devices" ? "device" : "monitor");   // object targets: "monitor"
     return { ok: true, count: j.count, message: "Applied to " + j.count + " " + what + (j.count === 1 ? "" : "s") + " \u2713" };
+  }
+
+
+  /* ---- V11.3 patch 06: context-aware "apply to ..." targets --------------------------------------------
+     For the device being edited it offers: this device / every device of the same TYPE / every monitor with the
+     same CHECK METHOD / all devices (or all sites) / the monitors in the page's CURRENT SEARCH OR FILTER. */
+  let _ctxCache = null;
+  async function context(deviceId, o) {
+    o = o || {};
+    const f = o.fetchFn || fetch, hdr = (typeof authHeaders === "function") ? authHeaders() : {};
+    if (!_ctxCache || (Date.now() - _ctxCache.t) > 15000) {
+      const [a, b] = await Promise.all([f("/api/devices", { headers: hdr }).then(r => r.json()), f("/api/monitor-facets", { headers: hdr }).then(r => r.json())]);
+      _ctxCache = { t: Date.now(), devices: a, facets: b };
+    }
+    const d = (_ctxCache.devices || []).find(x => x.id === deviceId) || { id: deviceId };
+    const methodOf = {}; (_ctxCache.devices || []).forEach(x => { methodOf[x.id] = x.method || ""; });
+    return { dev: { id: d.id, name: d.name || d.id, type: d.type || "", method: d.method || "ping", isSite: (d.method || "") === "url" }, facets: _ctxCache.facets || {}, methodOf: methodOf };
+  }
+  function resetContext() { _ctxCache = null; }
+  function targets(dev, facets, filterIds, o) {
+    o = o || {};
+    const f = facets || {}, cnt = (a, id) => ((a || []).find(x => x.id === id) || {}).count || 0,
+          lab = (a, id) => ((a || []).find(x => x.id === id) || {}).label || id;
+    const total = (f.methods || []).reduce((n, x) => n + (x.count || 0), 0), sites = cnt(f.methods, "url"), devs = total - sites;
+    const out = [{ key: "this", label: dev.isSite ? "This site" : "This device", count: 1, body: { ids: [dev.id] } }];
+    if (!dev.isSite) {
+      const tn = cnt(f.types, dev.type), mn = cnt(f.methods, dev.method);
+      if (tn > 1) out.push({ key: "type", label: "All " + lab(f.types, dev.type) + " devices", count: tn, body: { kind: "type", key: dev.type } });
+      if (mn > 1) out.push({ key: "method", label: "All " + lab(f.methods, dev.method) + " monitors", count: mn, body: { kind: "method", key: dev.method } });
+      out.push({ key: "devices", label: "All devices", count: devs, body: { scope: "devices" } });
+    } else {
+      out.push({ key: "sites", label: "All sites", count: sites, body: { scope: "sites" } });
+    }
+    if (o.every) out.push({ key: "all", label: "Every device & site", count: total, body: { scope: "all" } });
+    // a filter only counts monitors of the same kind (websites never mix with devices: their metrics differ)
+    if (filterIds && o.methods) filterIds = filterIds.filter(id => ((o.methods[id] || "") === "url") === !!dev.isSite);
+    if (filterIds && filterIds.length > 1) out.push({ key: "filter", label: "Current search / filter", count: filterIds.length, body: { ids: filterIds } });
+    return out;
+  }
+  function barHTML(label, items, fnName) {
+    return '<span class="lbl">' + esc(label) + '</span>' + items.map(t =>
+      '<button type="button" class="btn secondary small" title="' + esc(t.label + ": " + t.count + (t.count === 1 ? " monitor" : " monitors")) + '" onclick="' + fnName + "('" + t.key + "')\">" +
+      esc(t.label) + ' <span class="cnt">' + t.count + "</span></button>").join("");
+  }
+  function thrConfirmText(t, n) {
+    const rows = n + " threshold row" + (n === 1 ? "" : "s");
+    if (t.key === "type" || t.key === "method")
+      return "Set these thresholds (" + rows + ") for " + t.label.toLowerCase() + " (" + t.count + ")?\n\nThe values become the " + (t.key === "type" ? "type" : "method") +
+             " defaults, so monitors you add later follow them too. Any own value those " + t.count + " monitors had for these metrics is removed. Blank rows are left unchanged.";
+    if (t.key === "devices" || t.key === "sites")
+      return "Set these thresholds (" + rows + ") as the GLOBAL values for " + t.label.toLowerCase() + " (" + t.count + ")?\n\nAny own value those monitors had for these metrics is removed. Blank rows are left unchanged.";
+    return "Give these " + rows + " to " + t.label.toLowerCase() + " (" + t.count + ") as their OWN values?\n\nMetrics that do not apply to a monitor's check method are skipped for it. Blank rows and everything else are left unchanged.";
+  }
+  async function applyThr(t, thresholds, o) {
+    o = o || {};
+    const th = compact(thresholds || {}), n = Object.keys(th).length;
+    if (!n) return { ok: false, message: "Fill in at least one threshold row first (blank rows are not applied)." };
+    const ask = o.confirmFn || ((typeof confirm === "function") ? confirm : () => true);
+    if (t.key !== "this" && !ask(thrConfirmText(t, n))) return { cancelled: true };
+    let url, body;
+    if (t.key === "type" || t.key === "method") { url = "/api/settings/thresholds/scoped"; body = { kind: t.body.kind, key: t.body.key, thresholds: th, apply: true }; }
+    else if (t.key === "devices" || t.key === "sites") { url = "/api/settings/thresholds/apply"; body = { scope: t.body.scope, thresholds: th }; }
+    else { url = "/api/devices/thresholds/apply"; body = { ids: t.body.ids, thresholds: th }; }
+    const hdr = (typeof authHeaders === "function") ? authHeaders() : { "Content-Type": "application/json" };
+    const r = await (o.fetchFn || fetch)(url, { method: "POST", headers: hdr, body: JSON.stringify(body) });
+    let j = {}; try { j = await r.json(); } catch (_) {}
+    if (!r.ok || !j.ok) return { ok: false, message: (j && j.error) || ("Apply failed (" + r.status + ")") };
+    resetContext();
+    const c = (j.count != null ? j.count : t.count);
+    return { ok: true, count: c, message: "Thresholds applied to " + c + " monitor" + (c === 1 ? "" : "s") + (j.skipped ? " (" + j.skipped + " skipped: metric does not apply)" : "") + " \u2713" };
   }
 
   /* ---- the floating "!" box (browser only) --------------------------------------------------------- */
@@ -284,6 +355,7 @@ const ThrUI = (function () {
 
   return { load, get, setMeta, esc, metricsFor, defaultsFor, dirText, rangeText, recText,
            tableHTML, collect, compact, fillRecommended, summaryHTML, infoHTML, showInfo, closeInfo, infoState, bindInfo,
-           timingPayload, timingConfirmText, applyTiming };
+           timingPayload, timingConfirmText, applyTiming,
+           context, resetContext, targets, barHTML, thrConfirmText, applyThr };
 })();
 if (typeof module !== "undefined") module.exports = ThrUI;

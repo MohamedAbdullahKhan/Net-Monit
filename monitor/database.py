@@ -12,19 +12,72 @@ SQLite storage — extended for multi-level escalation in device_notify.
 import json
 import sqlite3
 import time
+import contextlib
 import threading
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "monitor.db"
-_lock = threading.Lock()
+_lock = threading.RLock()   # V11.3 patch 06: re-entrant, so batch() can hold it around functions that also take it
+
+
+_local = threading.local()
+_wal_done = False
+
+
+def _open_connection():
+    """One SQLite connection. V11.3 patch 06: journal_mode=WAL is persistent in the DB file, so it is set once per
+    process (it used to be re-issued, as a write, on EVERY connection); synchronous=NORMAL is the recommended
+    setting for WAL (no fsync per commit; still crash-safe for the application); busy_timeout makes a save wait
+    for the scheduler's write instead of failing."""
+    global _wal_done
+    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    if not _wal_done:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        _wal_done = True
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA busy_timeout=30000;")
+    conn.execute("PRAGMA foreign_keys=ON;")
+    return conn
+
+
+class _SharedConn:
+    """Stand-in handed out inside batch(): same connection for every call, commit/close deferred to the end."""
+    def __init__(self, c): self._c = c
+    def __getattr__(self, n): return getattr(self._c, n)
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def commit(self): pass
+    def close(self): pass
+
+
+@contextlib.contextmanager
+def batch():
+    """V11.3 patch 06: run many writes (e.g. 'apply to 300 devices') on ONE connection and ONE commit instead of
+    one connection + commit per device."""
+    if getattr(_local, "conn", None) is not None:      # nested: join the outer batch
+        yield
+        return
+    # Take the process-wide write lock FIRST, then open the SQLite write transaction. The other order (SQLite lock
+    # held while waiting for _lock) can deadlock against the scheduler thread, which does the opposite.
+    with _lock:
+        c = _open_connection()
+        _local.conn = _SharedConn(c)
+        try:
+            c.execute("BEGIN")
+            yield
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+        finally:
+            _local.conn = None
+            c.close()
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-    return conn
+    shared = getattr(_local, "conn", None)
+    return shared if shared is not None else _open_connection()
 
 
 def init_db():
@@ -1046,7 +1099,13 @@ def get_scan_history(limit: int = 20) -> list:
 # V7.2: System-wide settings (admin-configured defaults, e.g. default theme)
 # =============================================================================
 
+_sys_table_ok = False
+
+
 def _ensure_system_settings_table():
+    global _sys_table_ok
+    if _sys_table_ok:
+        return
     conn = get_connection()
     with conn:
         conn.execute("""
@@ -1056,6 +1115,7 @@ def _ensure_system_settings_table():
             )
         """)
     conn.close()
+    _sys_table_ok = True
 
 
 def get_system_setting(key: str, default=None):
