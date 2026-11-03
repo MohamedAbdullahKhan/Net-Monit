@@ -1208,3 +1208,31 @@ html, body, .sidebar, .main, .card, .topbar, input, select, textarea, button {
 /* V11.3 patch 06: context-aware apply bars */
 .apply-timing .btn .cnt { display:inline-block; min-width:18px; padding:0 6px; margin-left:4px; border-radius:99px; background:var(--accent-subtle, rgba(59,130,246,.15)); color:var(--text-secondary); font-size:11px; font-weight:700; text-align:center; }
 .apply-timing { row-gap:6px; }
+
+/* V11.3 patch 07: custom dashboard views */
+.cv-tabs { display:contents; }
+.cat-tab.cat-custom { border-style:solid; }
+.cat-tab.cat-custom .cv-star { color:#F2B84B; margin-right:2px; }
+.cat-tab.cat-custom .dot { width:8px; height:8px; margin-left:6px; display:inline-block; vertical-align:middle; }
+.cat-tab.cv-edit, .cat-tab.cv-add { opacity:.85; padding-left:10px; padding-right:10px; }
+.cat-tab.cv-add { border-style:dashed; }
+.cv-body { padding:16px 20px 20px; }
+.cv-help { margin:0 0 12px; font-size:12.5px; color:var(--text-muted); line-height:1.5; }
+.cv-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.cv-row label { width:56px; font-size:12.5px; color:var(--text-secondary); font-weight:600; }
+.cv-row input, .cv-row select { flex:1; }
+.cv-check { display:flex; gap:8px; align-items:center; font-size:13px; margin:2px 0 12px; }
+.cv-tools { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+.cv-tools input { flex:1 1 160px; min-width:120px; }
+.cv-count { font-size:12px; color:var(--text-muted); margin-left:auto; }
+.cv-list { border:1px solid var(--border); border-radius:var(--radius-sm); max-height:300px; overflow-y:auto; }
+.cv-item { display:flex; align-items:center; gap:10px; padding:7px 12px; border-bottom:1px solid var(--border); cursor:pointer; font-size:13px; }
+.cv-item:last-child { border-bottom:0; }
+.cv-item:hover { background:var(--bg-hover, rgba(127,127,127,.08)); }
+.cv-item .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cv-item .sub { color:var(--text-muted); font-size:11.5px; }
+.cv-item .dot { width:8px; height:8px; flex:none; }
+.cv-msg { min-height:18px; margin-top:8px; font-size:12.5px; color:var(--status-critical); }
+.cv-msg.ok { color:var(--status-ok); }
+.cv-actions { display:flex; gap:8px; margin-top:12px; }
+.cv-actions .danger { margin-left:auto; }

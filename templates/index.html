@@ -89,6 +89,8 @@
   <button class="cat-tab" data-cat="url" onclick="setCategory('url')">
     URL <span class="cat-count" id="cnt-url">0</span>
   </button>
+  <!-- V11.3 patch 07: your own custom views (tabs built by dashboard.js) -->
+  <span id="cv-tabs" class="cv-tabs"></span>
 </div>
 
 <!-- ── V7.2 Dashboard toolbar ──────────────────────────────────────── -->
@@ -206,6 +208,12 @@
   <div style="padding:6px 0;">
     <div style="padding:5px 14px 4px;font-size:10.6px;color:var(--text-muted);
          text-transform:uppercase;letter-spacing:.06em;">Tile options</div>
+    <button class="ctx-item" onclick="menuAddToCustomView()">
+      <span style="width:14px;text-align:center;">&#9733;</span> Add to a custom view&hellip;
+    </button>
+    <button class="ctx-item" id="ctx-remove-from-view" style="display:none" onclick="menuRemoveFromView()">
+      <span style="width:14px;text-align:center;">&#9734;</span> Remove from this view
+    </button>
     <button class="ctx-item" onclick="menuHideTile()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
@@ -246,6 +254,36 @@
         <line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
       </svg>Large (2×2)
     </button>
+  </div>
+</div>
+
+<!-- V11.3 patch 07: custom view editor -->
+<div id="cv-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="cv-title">
+  <div class="modal-box" style="max-width:660px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-header">
+      <span class="modal-title" id="cv-title">Custom view</span>
+      <button class="icon-btn" onclick="closeCustomViewEditor()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="cv-body">
+      <p class="cv-help">A custom view is your own tab. Pick the monitors you care about most; they get a tab of their own that shows only them, worst problems first, and the tab shows a coloured dot for the worst state inside it &mdash; even when you are looking at another tab.</p>
+      <div class="cv-row"><label for="cv-pick">View</label><select id="cv-pick" onchange="cvPick()"></select></div>
+      <div class="cv-row"><label for="cv-name">Name</label><input id="cv-name" maxlength="40" placeholder="e.g. NOC priority"></div>
+      <label class="cv-check"><input type="checkbox" id="cv-prio" checked> Priority order: show critical, offline and warning tiles first</label>
+      <div class="cv-tools">
+        <input id="cv-search" type="search" placeholder="Search tiles&hellip;" oninput="cvRender()">
+        <select id="cv-type" onchange="cvRender()"></select>
+        <button type="button" class="btn secondary small" onclick="cvSelectShown(true)">Select shown</button>
+        <button type="button" class="btn secondary small" onclick="cvSelectShown(false)">Clear shown</button>
+        <span id="cv-count" class="cv-count"></span>
+      </div>
+      <div id="cv-list" class="cv-list"></div>
+      <div id="cv-msg" class="cv-msg"></div>
+      <div class="cv-actions">
+        <button type="button" class="btn" onclick="saveCustomView()">Save view</button>
+        <button type="button" class="btn secondary" onclick="closeCustomViewEditor()">Cancel</button>
+        <button type="button" class="btn danger" id="cv-del" onclick="deleteCustomView()">Delete this view</button>
+      </div>
+    </div>
   </div>
 </div>
 

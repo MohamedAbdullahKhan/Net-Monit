@@ -82,6 +82,7 @@ function apiFetch(url, opts = {}) {
    Boot & polling
    ================================================================ */
 document.addEventListener('DOMContentLoaded', () => {
+  restoreLastView();   // V11.3 patch 07: come back to the tab / filter you left
   refresh();
   setInterval(refresh, 5000);
   document.addEventListener('click', closeCtxMenu);
@@ -152,6 +153,7 @@ async function refresh(retryCount = 0) {
     renderSummary(data.summary || {});
     renderIOCards(allDevices);
     updateCategoryTabs(allDevices);
+    if (currentRole && !_cvLoaded) { _cvLoaded = true; loadCustomViews(); }
 
     const lu = document.getElementById('last-updated');
     if (lu) lu.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
@@ -161,6 +163,169 @@ async function refresh(retryCount = 0) {
 
   if (spinner) spinner.style.display = 'none';
 }
+
+/* ================================================================
+   V11.3 patch 07: remember the last tab/filter + custom views
+   ================================================================ */
+let customViews = [];
+let _cvLoaded = false, _cvTabsSig = '', _lvTimer = null;
+const _VALID_CAT = /^(all|network|firewall|windows|linux|url|cv:[a-z0-9]{1,12})$/, _VALID_SEV = /^(all|ok|warning|critical|offline)$/;
+function _who() { return (sessionStorage.getItem('netmon_email') || 'anon').toLowerCase(); }
+function _lsGet(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
+function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
+
+function restoreLastView() {
+  try { const cv = JSON.parse(_lsGet('nm_dash_views_' + _who()) || '[]'); if (Array.isArray(cv)) customViews = cv; } catch (_) {}
+  try {
+    const lv = JSON.parse(_lsGet('nm_dash_last_' + _who()) || 'null');
+    if (lv && _VALID_CAT.test(lv.cat || '')) currentCategory = lv.cat;
+    if (lv && _VALID_SEV.test(lv.sev || '')) currentSeverity = lv.sev;
+    if (!lv && tok()) restoreFromServer();
+  } catch (_) {}
+}
+async function restoreFromServer() {          // first visit from this browser: pick up what you left on another PC
+  try {
+    const r = await apiFetch('/api/dashboard/last-view'); if (!r.ok) return;
+    const lv = (await r.json()).last_view;
+    if (lv && _VALID_CAT.test(lv.cat || '') && currentCategory === 'all' && currentSeverity === 'all') {
+      currentCategory = lv.cat; currentSeverity = _VALID_SEV.test(lv.sev || '') ? lv.sev : 'all';
+      if (allDevices.length) { renderSummary(summaryOf(allDevices)); updateCategoryTabs(allDevices); }
+    }
+  } catch (_) {}
+}
+function summaryOf(devs) { const s = { total: devs.length, ok: 0, warning: 0, critical: 0, offline: 0 }; devs.forEach(d => { if (s[d.status] !== undefined) s[d.status]++; }); return s; }
+function saveLastView() {
+  const v = { cat: currentCategory, sev: currentSeverity };
+  _lsSet('nm_dash_last_' + _who(), JSON.stringify(v));
+  if (!tok()) return;
+  clearTimeout(_lvTimer);
+  _lvTimer = setTimeout(() => { apiFetch('/api/dashboard/last-view', { method: 'POST', body: JSON.stringify(v) }).catch(() => {}); }, 500);
+}
+
+async function loadCustomViews() {
+  try {
+    const r = await apiFetch('/api/dashboard/custom-views'); if (!r.ok) return;
+    customViews = (await r.json()).views || [];
+    _lsSet('nm_dash_views_' + _who(), JSON.stringify(customViews));
+    if (String(currentCategory).startsWith('cv:') && !customViews.some(v => 'cv:' + v.id === currentCategory)) currentCategory = 'all';
+    _cvTabsSig = ''; updateCategoryTabs(allDevices);
+  } catch (_) {}
+}
+function _worst(ids) {
+  const r = { critical: 0, offline: 1, warning: 2, unknown: 3, ok: 4 }; let w = null;
+  ids.forEach(id => { const d = allDevices.find(x => x.device_id === id); if (d && (w === null || (r[d.status] ?? 9) < (r[w] ?? 9))) w = d.status; });
+  return w;
+}
+function renderCustomTabs(devices) {
+  const host = document.getElementById('cv-tabs'); if (!host) return;
+  const live = new Set((devices || []).map(d => d.device_id));
+  const parts = customViews.map(v => {
+    const n = v.device_ids.filter(i => live.has(i)).length, w = _worst(v.device_ids), cat = 'cv:' + v.id, act = currentCategory === cat;
+    return { sig: cat + '|' + v.name + '|' + n + '|' + w + '|' + act, cat, v, n, w, act };
+  });
+  const sig = parts.map(p => p.sig).join(';') + '#' + (currentRole ? 1 : 0);
+  if (sig === _cvTabsSig) return;
+  _cvTabsSig = sig;
+  host.innerHTML = parts.map(p =>
+    '<button class="cat-tab cat-custom' + (p.act ? ' active' : '') + '" data-cat="' + p.cat + '" onclick="setCategory(\'' + p.cat + '\')" title="Custom view: ' + escHtml(p.v.name) + (p.v.priority ? ' (worst first)' : '') + '">' +
+      '<span class="cv-star">&#9733;</span>' + escHtml(p.v.name) + ' <span class="cat-count">' + p.n + '</span>' +
+      (p.w ? '<span class="dot ' + p.w + '" title="Worst state in this view: ' + statusLabel(p.w) + '"></span>' : '') + '</button>' +
+    (p.act && currentRole ? '<button class="cat-tab cv-edit" onclick="openCustomViewEditor(\'' + p.v.id + '\')" title="Edit this view" aria-label="Edit view ' + escHtml(p.v.name) + '">&#9998;</button>' : '')
+  ).join('') + (currentRole ? '<button class="cat-tab cv-add" onclick="openCustomViewEditor(null)" title="Create your own tab of the monitors you care about most">&#65291; Custom view</button>' : '');
+}
+
+/* ---- editor ---- */
+let _cvEditId = null, _cvOrder = [];
+function openCustomViewEditor(viewId, preselectDeviceId) {
+  if (!currentRole) { showToast('Sign in to create custom views.', 'error'); return; }
+  closeCtxMenu();
+  const typeSel = document.getElementById('cv-type');
+  const types = [...new Set(allDevices.map(d => (d.type || 'other')))].sort();
+  typeSel.innerHTML = '<option value="">All types</option>' + types.map(t => '<option value="' + escHtml(t) + '">' + escHtml(t) + '</option>').join('');
+  document.getElementById('cv-search').value = '';
+  const pick = document.getElementById('cv-pick');
+  pick.innerHTML = '<option value="">+ New view</option>' + customViews.map(v => '<option value="' + v.id + '">' + escHtml(v.name) + '</option>').join('');
+  pick.value = viewId || ''; _cvEditId = viewId || null;
+  cvLoadInto(_cvEditId);
+  if (preselectDeviceId && !_cvOrder.includes(preselectDeviceId)) _cvOrder.push(preselectDeviceId);
+  document.getElementById('cv-msg').textContent = '';
+  cvRender();
+  document.getElementById('cv-overlay').classList.remove('hidden');
+  setTimeout(() => document.getElementById('cv-name').focus(), 50);
+}
+function cvLoadInto(id) {
+  const v = customViews.find(x => x.id === id);
+  document.getElementById('cv-name').value = v ? v.name : '';
+  document.getElementById('cv-prio').checked = v ? !!v.priority : true;
+  document.getElementById('cv-title').textContent = v ? 'Edit custom view' : 'New custom view';
+  document.getElementById('cv-del').style.display = v ? '' : 'none';
+  _cvOrder = v ? [...v.device_ids] : [];
+}
+function cvPick() { const keep = new Set(_cvOrder); _cvEditId = document.getElementById('cv-pick').value || null; cvLoadInto(_cvEditId); cvRender(); }
+function closeCustomViewEditor() { document.getElementById('cv-overlay').classList.add('hidden'); }
+function _cvShown() {
+  const q = document.getElementById('cv-search').value.trim().toLowerCase(), t = document.getElementById('cv-type').value;
+  return allDevices.filter(d => (!t || (d.type || 'other') === t) && (!q || (d.name + ' ' + (d.host || '') + ' ' + d.device_id + ' ' + (d.type || '')).toLowerCase().includes(q)))
+                   .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+function cvRender() {
+  const sel = new Set(_cvOrder), shown = _cvShown();
+  document.getElementById('cv-list').innerHTML = shown.map(d =>
+    '<label class="cv-item"><input type="checkbox" data-id="' + escHtml(d.device_id) + '"' + (sel.has(d.device_id) ? ' checked' : '') + ' onchange="cvToggle(this)">' +
+    '<span class="dot ' + d.status + '"></span><span class="nm">' + escHtml(d.name) + '</span><span class="sub">' + escHtml(d.type || '') + (currentRole === 'admin' && d.host ? ' &middot; ' + escHtml(d.host) : '') + '</span></label>').join('')
+    || '<div style="padding:14px;color:var(--text-muted);font-size:13px">No monitors match.</div>';
+  document.getElementById('cv-count').textContent = _cvOrder.length + ' selected \u00b7 ' + shown.length + ' shown';
+}
+function cvToggle(cb) {
+  const id = cb.getAttribute('data-id'), i = _cvOrder.indexOf(id);
+  if (cb.checked && i < 0) _cvOrder.push(id); else if (!cb.checked && i >= 0) _cvOrder.splice(i, 1);
+  document.getElementById('cv-count').textContent = _cvOrder.length + ' selected \u00b7 ' + _cvShown().length + ' shown';
+}
+function cvSelectShown(on) {
+  _cvShown().forEach(d => { const i = _cvOrder.indexOf(d.device_id); if (on && i < 0) _cvOrder.push(d.device_id); if (!on && i >= 0) _cvOrder.splice(i, 1); });
+  cvRender();
+}
+async function _cvPost(list, okMsg, goTo) {
+  const msg = document.getElementById('cv-msg');
+  try {
+    const r = await apiFetch('/api/dashboard/custom-views', { method: 'POST', body: JSON.stringify({ views: list }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) { msg.className = 'cv-msg'; msg.textContent = j.error || ('Could not save (' + r.status + ')'); return false; }
+    customViews = j.views; _lsSet('nm_dash_views_' + _who(), JSON.stringify(customViews)); _cvTabsSig = '';
+    closeCustomViewEditor();
+    if (goTo) setCategory(goTo); else { if (String(currentCategory).startsWith('cv:') && !customViews.some(v => 'cv:' + v.id === currentCategory)) setCategory('all'); else updateCategoryTabs(allDevices); }
+    showToast(okMsg, 'success'); return true;
+  } catch (e) { msg.className = 'cv-msg'; msg.textContent = 'Could not save: ' + e.message; return false; }
+}
+async function saveCustomView() {
+  const name = document.getElementById('cv-name').value.trim(), msg = document.getElementById('cv-msg');
+  if (!name) { msg.className = 'cv-msg'; msg.textContent = 'Give the view a name.'; return; }
+  if (!_cvOrder.length) { msg.className = 'cv-msg'; msg.textContent = 'Tick at least one monitor.'; return; }
+  const v = { id: _cvEditId || '', name, device_ids: [..._cvOrder], priority: document.getElementById('cv-prio').checked };
+  const list = _cvEditId ? customViews.map(x => x.id === _cvEditId ? Object.assign({}, x, v, { id: x.id }) : x) : customViews.concat([v]);
+  const before = new Set(customViews.map(x => x.id));
+  const ok = await _cvPost(list, 'Custom view saved \u2713');
+  if (ok) { const made = customViews.find(x => !before.has(x.id)); setCategory('cv:' + (_cvEditId || (made && made.id) || customViews[customViews.length - 1].id)); }
+}
+async function deleteCustomView() {
+  const v = customViews.find(x => x.id === _cvEditId); if (!v) return;
+  if (!confirm('Delete the custom view "' + v.name + '"? The monitors themselves are not touched.')) return;
+  await _cvPost(customViews.filter(x => x.id !== v.id), 'Custom view deleted');
+}
+function menuAddToCustomView() {
+  const id = ctxDeviceId; closeCtxMenu();
+  const active = String(currentCategory).startsWith('cv:') ? currentCategory.slice(3) : null;
+  openCustomViewEditor(active || (customViews.length === 1 ? customViews[0].id : null), id);
+}
+async function menuRemoveFromView() {
+  const id = ctxDeviceId; closeCtxMenu();
+  const vid = String(currentCategory).startsWith('cv:') ? currentCategory.slice(3) : null; if (!vid) return;
+  const list = customViews.map(v => v.id === vid ? Object.assign({}, v, { device_ids: v.device_ids.filter(x => x !== id) }) : v).filter(v => v.device_ids.length);
+  const r = await apiFetch('/api/dashboard/custom-views', { method: 'POST', body: JSON.stringify({ views: list }) });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok && j.ok) { customViews = j.views; _lsSet('nm_dash_views_' + _who(), JSON.stringify(customViews)); _cvTabsSig = ''; if (!customViews.some(v => 'cv:' + v.id === currentCategory)) setCategory('all'); else { updateCategoryTabs(allDevices); } showToast('Removed from this view', 'success'); }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCustomViewEditor(); });
 
 /* ================================================================
    V7.2: Infrastructure Overview telemetry cards (NISM-inspired)
@@ -282,10 +447,11 @@ function setSeverityFilter(sev) {
   // Clicking the pill that's already active clears the filter instead of
   // re-applying it -- lets the same click act as an on/off toggle.
   currentSeverity = (currentSeverity === sev) ? 'all' : sev;
-  currentCategory  = 'all';
-  document.querySelectorAll('.cat-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.cat === 'all'));
+  if (!String(currentCategory).startsWith('cv:')) currentCategory = 'all';   // inside a custom view the severity filter narrows that view
+  syncTabActive();
   document.querySelectorAll('.summary-pill').forEach(p => p.classList.toggle('active', p.dataset.sev === currentSeverity));
   renderDevices(_applyFilters(allDevices));
+  saveLastView();
 }
 
 /* ================================================================
@@ -360,6 +526,7 @@ function setGridCols(n) {
    Edit Layout mode
    ================================================================ */
 function toggleEditMode() {
+  if (!editMode && String(currentCategory).startsWith('cv:')) { showToast('Drag, resize and hide work on the main tabs. Use the pencil next to this view to change which tiles it holds.', 'info'); return; }
   editMode ? cancelEditMode() : enterEditMode();
 }
 
@@ -505,6 +672,7 @@ function applyTileSpan(card, size, grid_w, grid_h) {
    summary cards above always reflect the full unfiltered device set.
    ================================================================ */
 let currentCategory = 'all';
+let _customOrder = null;   // device ids in the order a custom view wants (null on normal tabs)
 
 function _deviceCategory(d) {
   const method = (d.method || '').toLowerCase();
@@ -518,6 +686,20 @@ function _deviceCategory(d) {
 }
 
 function _applyFilters(devices) {
+  _customOrder = null;
+  if (String(currentCategory).startsWith('cv:')) {
+    const v = customViews.find(x => 'cv:' + x.id === currentCategory);
+    if (v) {
+      const byId = new Map(devices.map(d => [d.device_id, d]));
+      let out = v.device_ids.map(id => byId.get(id)).filter(Boolean).map(d => Object.assign({}, d, { tile_hidden: false }));   // added on purpose: never hidden here
+      if (currentSeverity !== 'all') out = out.filter(d => d.status === currentSeverity);
+      if (v.priority) { const r = { critical: 0, offline: 1, warning: 2, unknown: 3, ok: 4 }; out = out.map((d, i) => [d, i]).sort((a, b) => ((r[a[0].status] ?? 4) - (r[b[0].status] ?? 4)) || (a[1] - b[1])).map(x => x[0]); }
+      _customOrder = out.map(d => d.device_id);
+      return out;
+    }
+    if (!_cvLoaded) return currentSeverity === 'all' ? devices : devices.filter(d => d.status === currentSeverity);   // views still loading: keep the saved tab, show everything meanwhile
+    currentCategory = 'all';   // that view was deleted
+  }
   let out = currentCategory === 'all' ? devices : devices.filter(d => _deviceCategory(d) === currentCategory);
   if (currentSeverity !== 'all') out = out.filter(d => d.status === currentSeverity);
   return out;
@@ -526,11 +708,14 @@ function _applyFilters(devices) {
 function setCategory(cat) {
   currentCategory = cat;
   currentSeverity = 'all';
-  document.querySelectorAll('.cat-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.cat === cat);
-  });
+  syncTabActive();
   document.querySelectorAll('.summary-pill').forEach(p => p.classList.toggle('active', p.dataset.sev === 'all'));
   renderDevices(_applyFilters(allDevices));
+  renderCustomTabs(allDevices);
+  saveLastView();
+}
+function syncTabActive() {
+  document.querySelectorAll('.cat-tab[data-cat]').forEach(btn => btn.classList.toggle('active', btn.dataset.cat === currentCategory));
 }
 
 function updateCategoryTabs(devices) {
@@ -544,6 +729,8 @@ function updateCategoryTabs(devices) {
   // severity) is currently active -- keeps the selection sticky across
   // every 5s poll instead of always snapping back to "all".
   renderDevices(_applyFilters(devices));
+  renderCustomTabs(devices);
+  syncTabActive();
 }
 
 function renderDevices(devices, forceShowHidden = false) {
@@ -553,8 +740,9 @@ function renderDevices(devices, forceShowHidden = false) {
   if (!grid) return;
 
   // Sort by tile_position
-  const sorted = [...devices].sort((a, b) =>
-    (a.tile_position || 0) - (b.tile_position || 0));
+  const sorted = _customOrder
+    ? [...devices].sort((a, b) => _customOrder.indexOf(a.device_id) - _customOrder.indexOf(b.device_id))   // custom view: its own priority order
+    : [...devices].sort((a, b) => (a.tile_position || 0) - (b.tile_position || 0));
 
   const visible  = sorted.filter(d => !d.tile_hidden);
   const hidden   = sorted.filter(d => !!d.tile_hidden);
@@ -604,6 +792,10 @@ function renderDevices(devices, forceShowHidden = false) {
       b.classList.toggle('active', b.dataset.size === st.size);
     });
   });
+  if (_customOrder) {   // keep the on-screen order = priority order as states change (only touches the DOM when it differs)
+    const want = showList.map(d => d.device_id), have = [...grid.querySelectorAll('.device-card[data-id]')].map(c => c.dataset.id);
+    if (want.join('|') !== have.join('|')) want.forEach(id => { const c = grid.querySelector('.device-card[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]'); if (c) grid.appendChild(c); });
+  }
 }
 
 function buildTileCard(device) {
@@ -918,6 +1110,7 @@ function openCtxMenu(e, deviceId) {
   ctxDeviceId = deviceId;
   const menu = document.getElementById('tile-ctx-menu');
   if (!menu) return;
+  const rm = document.getElementById('ctx-remove-from-view'); if (rm) rm.style.display = String(currentCategory).startsWith('cv:') ? '' : 'none';
   menu.style.display = '';
   menu.style.left    = Math.min(e.clientX, window.innerWidth  - 210) + 'px';
   menu.style.top     = Math.min(e.clientY, window.innerHeight - 260) + 'px';

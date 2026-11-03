@@ -9,7 +9,7 @@ app.py -- Net-monit V11.3
 Port   : 50113
 Supports HTTP and HTTPS (set NETMON_SSL_CERT / NETMON_SSL_KEY env vars for HTTPS)
 """
-import json, logging, os, platform, re, time, warnings
+import json, logging, os, platform, re, secrets, time, warnings
 import base64
 
 warnings.filterwarnings("ignore", message=".*TripleDES.*")
@@ -416,6 +416,90 @@ def api_set_theme():
     if theme not in ("dark", "light", "system"):
         return jsonify({"error": "Invalid theme"}), 400
     db.set_user_pref(_email(), "theme", theme)
+    return jsonify({"ok": True})
+
+
+# ── dashboard: custom views + last-viewed tab (V11.3 patch 07) ─────────────────────────────
+_CV_MAX_VIEWS, _CV_MAX_TILES = 12, 500
+_LV_CATS = {"all", "network", "firewall", "windows", "linux", "url"}
+_LV_SEVS = {"all", "ok", "warning", "critical", "offline"}
+
+
+def _clean_custom_views(raw):
+    """Validate a user's list of custom dashboard views. Returns (views, error)."""
+    if not isinstance(raw, list):
+        return None, "views must be a list"
+    if len(raw) > _CV_MAX_VIEWS:
+        return None, f"At most {_CV_MAX_VIEWS} custom views."
+    out, ids, names = [], set(), set()
+    for v in raw:
+        if not isinstance(v, dict):
+            continue
+        name = str(v.get("name") or "").strip()[:40]
+        if not name:
+            return None, "Every custom view needs a name."
+        if name.lower() in names:
+            return None, f"Two views are called '{name}'. Use different names."
+        names.add(name.lower())
+        vid = re.sub(r"[^a-z0-9]", "", str(v.get("id") or "").lower())[:12]
+        if not vid or vid in ids:
+            vid = secrets.token_hex(4)
+        ids.add(vid)
+        tiles, seen = [], set()
+        for x in (v.get("device_ids") or []):
+            x = str(x)[:80]
+            if x and x not in seen:
+                seen.add(x); tiles.append(x)
+        out.append({"id": vid, "name": name, "device_ids": tiles[:_CV_MAX_TILES], "priority": bool(v.get("priority", True))})
+    return out, None
+
+
+@app.route("/api/dashboard/custom-views", methods=["GET"])
+def api_get_custom_views():
+    err = _require_login()
+    if err: return err
+    try:
+        views = json.loads(db.get_user_pref(_email(), "dashboard_custom_views") or "[]")
+    except Exception:
+        views = []
+    live = {d["id"] for d in config_manager.get_config().get("devices", [])}
+    for v in views:                                   # tiles of deleted monitors quietly disappear
+        v["device_ids"] = [i for i in v.get("device_ids", []) if i in live]
+    return jsonify({"views": views})
+
+
+@app.route("/api/dashboard/custom-views", methods=["POST"])
+def api_set_custom_views():
+    err = _require_login()
+    if err: return err
+    b = request.get_json(force=True) or {}
+    views, e = _clean_custom_views(b.get("views"))
+    if e:
+        return jsonify({"ok": False, "error": e}), 400
+    db.set_user_pref(_email(), "dashboard_custom_views", json.dumps(views))
+    return jsonify({"ok": True, "views": views})
+
+
+@app.route("/api/dashboard/last-view", methods=["GET"])
+def api_get_last_view():
+    err = _require_login()
+    if err: return err
+    try:
+        lv = json.loads(db.get_user_pref(_email(), "dashboard_last_view") or "null")
+    except Exception:
+        lv = None
+    return jsonify({"last_view": lv})
+
+
+@app.route("/api/dashboard/last-view", methods=["POST"])
+def api_set_last_view():
+    err = _require_login()
+    if err: return err
+    b = request.get_json(force=True) or {}
+    cat, sev = str(b.get("cat") or "all"), str(b.get("sev") or "all")
+    if not (cat in _LV_CATS or re.fullmatch(r"cv:[a-z0-9]{1,12}", cat)) or sev not in _LV_SEVS:
+        return jsonify({"ok": False, "error": "Invalid view."}), 400
+    db.set_user_pref(_email(), "dashboard_last_view", json.dumps({"cat": cat, "sev": sev}))
     return jsonify({"ok": True})
 
 
