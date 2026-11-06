@@ -235,7 +235,7 @@ const ThrUI = (function () {
     const f = facets || {}, cnt = (a, id) => ((a || []).find(x => x.id === id) || {}).count || 0,
           lab = (a, id) => ((a || []).find(x => x.id === id) || {}).label || id;
     const total = (f.methods || []).reduce((n, x) => n + (x.count || 0), 0), sites = cnt(f.methods, "url"), devs = total - sites;
-    const out = [{ key: "this", label: dev.isSite ? "This site" : "This device", count: 1, body: { ids: [dev.id] } }];
+    const out = [{ key: "this", label: dev.isSite ? "This site only" : "This device only", count: 1, body: { ids: [dev.id] } }];
     if (!dev.isSite) {
       const tn = cnt(f.types, dev.type), mn = cnt(f.methods, dev.method);
       if (tn > 1) out.push({ key: "type", label: "All " + lab(f.types, dev.type) + " devices", count: tn, body: { kind: "type", key: dev.type } });
@@ -244,7 +244,6 @@ const ThrUI = (function () {
     } else {
       out.push({ key: "sites", label: "All sites", count: sites, body: { scope: "sites" } });
     }
-    if (o.every) out.push({ key: "all", label: "Every device & site", count: total, body: { scope: "all" } });
     // a filter only counts monitors of the same kind (websites never mix with devices: their metrics differ)
     if (filterIds && o.methods) filterIds = filterIds.filter(id => ((o.methods[id] || "") === "url") === !!dev.isSite);
     if (filterIds && filterIds.length > 1) out.push({ key: "filter", label: "Current search / filter", count: filterIds.length, body: { ids: filterIds } });
@@ -257,12 +256,9 @@ const ThrUI = (function () {
   }
   function thrConfirmText(t, n) {
     const rows = n + " threshold row" + (n === 1 ? "" : "s");
-    if (t.key === "type" || t.key === "method")
-      return "Set these thresholds (" + rows + ") for " + t.label.toLowerCase() + " (" + t.count + ")?\n\nThe values become the " + (t.key === "type" ? "type" : "method") +
-             " defaults, so monitors you add later follow them too. Any own value those " + t.count + " monitors had for these metrics is removed. Blank rows are left unchanged.";
-    if (t.key === "devices" || t.key === "sites")
-      return "Set these thresholds (" + rows + ") as the GLOBAL values for " + t.label.toLowerCase() + " (" + t.count + ")?\n\nAny own value those monitors had for these metrics is removed. Blank rows are left unchanged.";
-    return "Give these " + rows + " to " + t.label.toLowerCase() + " (" + t.count + ") as their OWN values?\n\nMetrics that do not apply to a monitor's check method are skipped for it. Blank rows and everything else are left unchanged.";
+    return "Write these " + rows + " to " + t.label.toLowerCase().replace(/^all /, "all ") + " (" + t.count + ")?\n\n" +
+           "Each of those monitors gets these as its OWN values, so you will see them in every one of their windows. " +
+           "A metric that does not apply to a monitor's check method is skipped for that monitor. Blank rows and everything else are left unchanged.";
   }
   async function applyThr(t, thresholds, o) {
     o = o || {};
@@ -270,17 +266,27 @@ const ThrUI = (function () {
     if (!n) return { ok: false, message: "Fill in at least one threshold row first (blank rows are not applied)." };
     const ask = o.confirmFn || ((typeof confirm === "function") ? confirm : () => true);
     if (t.key !== "this" && !ask(thrConfirmText(t, n))) return { cancelled: true };
-    let url, body;
-    if (t.key === "type" || t.key === "method") { url = "/api/settings/thresholds/scoped"; body = { kind: t.body.kind, key: t.body.key, thresholds: th, apply: true }; }
-    else if (t.key === "devices" || t.key === "sites") { url = "/api/settings/thresholds/apply"; body = { scope: t.body.scope, thresholds: th }; }
-    else { url = "/api/devices/thresholds/apply"; body = { ids: t.body.ids, thresholds: th }; }
+    // V11.3 patch 08: ONE rule for every target. The values are written to each chosen monitor as its own value (this
+    // device, same type, same method, all devices/sites, current filter). Before, "same type/method/all" saved a hidden
+    // default and removed the devices' own values, so the other devices' windows still showed the old grey numbers
+    // and it looked as if nothing had been applied.
     const hdr = (typeof authHeaders === "function") ? authHeaders() : { "Content-Type": "application/json" };
-    const r = await (o.fetchFn || fetch)(url, { method: "POST", headers: hdr, body: JSON.stringify(body) });
+    const r = await (o.fetchFn || fetch)("/api/devices/thresholds/apply", { method: "POST", headers: hdr, body: JSON.stringify(Object.assign({}, t.body, { thresholds: th })) });
     let j = {}; try { j = await r.json(); } catch (_) {}
     if (!r.ok || !j.ok) return { ok: false, message: (j && j.error) || ("Apply failed (" + r.status + ")") };
     resetContext();
     const c = (j.count != null ? j.count : t.count);
-    return { ok: true, count: c, message: "Thresholds applied to " + c + " monitor" + (c === 1 ? "" : "s") + (j.skipped ? " (" + j.skipped + " skipped: metric does not apply)" : "") + " \u2713" };
+    return { ok: true, count: c, skipped: j.skipped || 0, message: "Thresholds written to " + c + " monitor" + (c === 1 ? "" : "s") + (j.skipped ? " (" + j.skipped + " skipped: metric not measured by their check method)" : "") + " \u2713" };
+  }
+  /* what each box falls back to when it is left blank, and where that number comes from (data = /api/devices/<id>/thresholds) */
+  function inheritInfo(data) {
+    const inherit = {}, sources = {};
+    ((data && data.metrics) || []).forEach(m => {
+      const has = m.override && (m.override.warning != null || m.override.critical != null || m.override.enabled != null);
+      inherit[m.key] = (m.inherited && (m.inherited.warning != null || m.inherited.critical != null)) ? m.inherited : m.effective;
+      sources[m.key] = has ? "this device" : ((m.inherited && m.inherited.source) || m.source || "built-in");
+    });
+    return { inherit, sources };
   }
 
   /* ---- the floating "!" box (browser only) --------------------------------------------------------- */
@@ -356,6 +362,6 @@ const ThrUI = (function () {
   return { load, get, setMeta, esc, metricsFor, defaultsFor, dirText, rangeText, recText,
            tableHTML, collect, compact, fillRecommended, summaryHTML, infoHTML, showInfo, closeInfo, infoState, bindInfo,
            timingPayload, timingConfirmText, applyTiming,
-           context, resetContext, targets, barHTML, thrConfirmText, applyThr };
+           context, resetContext, targets, barHTML, thrConfirmText, applyThr, inheritInfo };
 })();
 if (typeof module !== "undefined") module.exports = ThrUI;

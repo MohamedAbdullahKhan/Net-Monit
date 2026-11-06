@@ -149,10 +149,7 @@ async function loadNotifDeviceTable(){
     const devR=await fetch("/api/devices",{headers:{"X-Session-Token":getSession()}});
     const devices=await devR.json();
     const tbody=v("notif-device-tbody"); if(!tbody) return;
-    const notifMap={};
-    for(const d of devices){
-      try{const nr=await fetch(`/api/devices/${encodeURIComponent(d.id)}/notify`,{headers:{"X-Session-Token":getSession()}});if(nr.ok)notifMap[d.id]=await nr.json();}catch(_){}
-    }
+    const notifMap=await getNotifyMap(devices);
     tbody.innerHTML=devices.map(d=>{
       const n=notifMap[d.id]||{};
       const en=n.notifications_enabled!==0;
@@ -351,10 +348,7 @@ async function loadEscDeviceTable(){
     const devR=await fetch("/api/devices",{headers:{"X-Session-Token":getSession()}});
     const devices=await devR.json();
     const tbody=v("esc-device-tbody"); if(!tbody) return;
-    const notifMap={};
-    await Promise.all(devices.map(async d=>{
-      try{const nr=await fetch(`/api/devices/${encodeURIComponent(d.id)}/notify`,{headers:{"X-Session-Token":getSession()}});if(nr.ok)notifMap[d.id]=await nr.json();}catch(_){}
-    }));
+    const notifMap=await getNotifyMap(devices);
     tbody.innerHTML=devices.map(d=>{
       const n=notifMap[d.id]||{};
       const lv=n.escalation_levels||0;
@@ -950,10 +944,7 @@ async function loadThreshDeviceTable(){
     const devR=await fetch("/api/devices",{headers:{"X-Session-Token":getSession()}});
     const devices=await devR.json();
     const host=v("thresh-device-groups"); if(!host) return;
-    const notifMap={};
-    await Promise.all(devices.map(async d=>{
-      try{const nr=await fetch(`/api/devices/${encodeURIComponent(d.id)}/notify`,{headers:{"X-Session-Token":getSession()}});if(nr.ok)notifMap[d.id]=await nr.json();}catch(_){}
-    }));
+    const notifMap=await getNotifyMap(devices);
     const TYPE={url:"Website",ping:"Ping",snmp:"SNMP",ssh:"SSH",powershell:"PowerShell",disk_usage:"Disk"};
     const row=d=>{
       const t=(notifMap[d.id]||{}).thresholds||{};
@@ -1460,6 +1451,8 @@ async function renderSnmThresholds(saved,deviceId,deviceWaitSec){
   window._snmMetrics = null;
   const c=v("snm-thresholds"); if(!c) return;
   c.innerHTML='<div style="color:var(--text-muted);padding:8px">Loading metrics\u2026</div>';
+  let _snmInh={inherit:{},sources:{}};
+  try{ const ir=await fetch("/api/devices/"+encodeURIComponent(deviceId)+"/thresholds",{headers:authHeaders()}); if(ir.ok) _snmInh=ThrUI.inheritInfo(await ir.json()); }catch(_){}
   // The device's method decides which metrics are relevant (url = website -> response time, SSL, DNS ...)
   let method="ping";
   try{
@@ -1473,7 +1466,7 @@ async function renderSnmThresholds(saved,deviceId,deviceWaitSec){
   window._snmMetrics=metrics;
   const title = method==="url" ? "Website thresholds" : "Device thresholds";
   c.innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">${title}. Leave a box blank to use the global value (Settings &gt; Thresholds), then the recommended value shown in grey.</div>`+
-    ThrUI.tableHTML(meta,metrics,saved,SNM_IDS,{wait:true,waitPlaceholder:deviceWaitSec})+
+    ThrUI.tableHTML(meta,metrics,saved,SNM_IDS,{wait:true,waitPlaceholder:deviceWaitSec,inherit:_snmInh.inherit,sources:_snmInh.sources})+
     `<div style="margin-top:8px"><button type="button" class="btn secondary small" onclick="snmFillRecommended()">Fill recommended values</button></div>`;
   snmRenderBars(deviceId);
 }
@@ -1481,7 +1474,7 @@ function snmFillRecommended(){
   const meta=ThrUI.get(); if(!meta||!window._snmMetrics) return;
   ThrUI.fillRecommended(meta,window._snmMetrics,SNM_IDS);
 }
-async function saveSettNotifyModal(){
+async function saveSettNotifyModal(closeAfter){
   if (v("snm-trigger-mode")?.value === "sustained") syncSnmWaitToL1();
   const levels=SNM_ESC.l3?3:SNM_ESC.l2?2:SNM_ESC.l1?1:0;
   const getE=n=>{const t=v(`snm-esc-l${n}`);return t&&SNM_ESC["l"+n]?parseEmails(t.value):[];};
@@ -1513,7 +1506,12 @@ async function saveSettNotifyModal(){
   let _em="Save failed";
   if(!r.ok){ try{ const j=await r.json(); if(j&&j.error) _em=j.error; }catch(_){} }
   setStatus("snm-status",r.ok?"Saved ✓":_em,r.ok);
-  if(r.ok){setTimeout(closeSettNotifyModal,1200);loadEscDeviceTable();loadThreshDeviceTable();loadNotifDeviceTable();loadDevicesTab();}
+  if(r.ok){
+    // V11.3 patch 08: refresh only the table you are looking at (the others reload when you open them), and close at once on "Save & close".
+    reloadVisibleDeviceTable();
+    if(closeAfter){ closeSettNotifyModal(); }
+    else { ThrUI.resetContext(); renderSnmThresholds(payload.thresholds||{},_snmDeviceId,payload.escalation_after_sec_l1); }
+  }
 }
 function closeSettNotifyModal(){v("sett-notify-modal")?.classList.add("hidden");}
 
@@ -1702,6 +1700,25 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 
 // V11.3 patch 06: Settings notify window "apply to ..." bars + the Escalation tab's "Current search / filter" button.
+/* V11.3 patch 08: every device's notification settings in ONE request. The Notifications / Escalation / Thresholds tables used to
+   ask for them one device at a time (the Notifications table one AFTER another), and ran after every save. */
+async function getNotifyMap(devices){
+  try{
+    const r=await fetch("/api/devices/notify-all",{headers:{"X-Session-Token":getSession()}});
+    if(r.ok){ const j=await r.json(); if(j&&j.notify) return j.notify; }
+  }catch(_){}
+  const m={};   // older server without the bulk call
+  await Promise.all(devices.map(async d=>{ try{ const nr=await fetch(`/api/devices/${encodeURIComponent(d.id)}/notify`,{headers:{"X-Session-Token":getSession()}}); if(nr.ok) m[d.id]=await nr.json(); }catch(_){} }));
+  return m;
+}
+function reloadVisibleDeviceTable(){
+  const pane=[...document.querySelectorAll('[id^="tab-"]')].find(p=>p.offsetParent!==null && p.querySelector("[data-mon-id]"));
+  const id=pane?pane.id:"";
+  if(id==="tab-escalation") loadEscDeviceTable();
+  else if(id==="tab-thresholds") loadThreshDeviceTable();
+  else if(id==="tab-notifications") loadNotifDeviceTable();
+  else if(id==="tab-devices") loadDevicesTab();   // the other tables reload when their tab is opened
+}
 let _snmTargets=[];
 function settVisibleIds(){
   const pane=[...document.querySelectorAll('[id^="tab-"]')].find(p=>p.offsetParent!==null && p.querySelector("[data-mon-id]"));
@@ -1714,9 +1731,9 @@ async function snmRenderBars(deviceId){
   let ctx; try{ ThrUI.resetContext(); ctx=await ThrUI.context(deviceId); }catch(e){ return; }
   if(deviceId!==_snmDeviceId) return;
   const fi=settVisibleIds(), narrowed=fi.length>0 && fi.length<(ctx.facets.methods||[]).reduce((n,x)=>n+(x.count||0),0);
-  _snmTargets=ThrUI.targets(ctx.dev,ctx.facets,narrowed?fi:null,{every:true,methods:ctx.methodOf});
+  _snmTargets=ThrUI.targets(ctx.dev,ctx.facets,narrowed?fi:null,{methods:ctx.methodOf});
   if(tb) tb.innerHTML=ThrUI.barHTML("Apply wait & cooldown to:",_snmTargets,"snmApplyTiming");
-  if(hb) hb.innerHTML=ThrUI.barHTML("Apply the thresholds above to:",_snmTargets.filter(t=>t.key!=="all"),"snmApplyThr");
+  if(hb) hb.innerHTML=ThrUI.barHTML("Apply the thresholds above to:",_snmTargets,"snmApplyThr");
 }
 async function snmApplyTiming(key){
   const t=_snmTargets.find(x=>x.key===key); if(!t) return;
@@ -1728,7 +1745,8 @@ async function snmApplyThr(key){
   if(!window._snmMetrics||!ThrUI.get()){ showToast("The threshold table is not loaded yet.","error"); return; }
   const col=ThrUI.collect(ThrUI.get(),window._snmMetrics,SNM_IDS,{wait:true});
   if(col.errors.length){ showToast(col.errors[0],"error"); return; }
-  try{ const res=await ThrUI.applyThr(t,col.thresholds); if(res.cancelled) return; showToast(res.message,res.ok?"success":"error"); }
+  try{ const res=await ThrUI.applyThr(t,col.thresholds); if(res.cancelled) return; showToast(res.message,res.ok?"success":"error");
+    if(res.ok){ reloadVisibleDeviceTable(); const c=await (await fetch("/api/devices/"+encodeURIComponent(_snmDeviceId)+"/notify",{headers:authHeaders()})).json(); renderSnmThresholds(c.thresholds||{},_snmDeviceId,c.escalation_after_sec_l1); } }
   catch(e){ showToast("Apply failed: "+e.message,"error"); }
 }
 async function applyEscFilter(){

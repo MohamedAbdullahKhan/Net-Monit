@@ -279,8 +279,9 @@
       <div id="cv-list" class="cv-list"></div>
       <div id="cv-msg" class="cv-msg"></div>
       <div class="cv-actions">
-        <button type="button" class="btn" onclick="saveCustomView()">Save view</button>
-        <button type="button" class="btn secondary" onclick="closeCustomViewEditor()">Cancel</button>
+        <button type="button" class="btn" onclick="saveCustomView(false)" title="Save and keep this window open">Save</button>
+        <button type="button" class="btn" onclick="saveCustomView(true)" title="Save and close this window">Save &amp; close</button>
+        <button type="button" class="btn secondary" onclick="closeCustomViewEditor()" title="Close without saving">Cancel</button>
         <button type="button" class="btn danger" id="cv-del" onclick="deleteCustomView()">Delete this view</button>
       </div>
     </div>

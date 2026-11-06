@@ -285,27 +285,32 @@ function cvSelectShown(on) {
   _cvShown().forEach(d => { const i = _cvOrder.indexOf(d.device_id); if (on && i < 0) _cvOrder.push(d.device_id); if (!on && i >= 0) _cvOrder.splice(i, 1); });
   cvRender();
 }
-async function _cvPost(list, okMsg, goTo) {
+async function _cvPost(list, okMsg, goTo, keepOpen) {
   const msg = document.getElementById('cv-msg');
   try {
     const r = await apiFetch('/api/dashboard/custom-views', { method: 'POST', body: JSON.stringify({ views: list }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) { msg.className = 'cv-msg'; msg.textContent = j.error || ('Could not save (' + r.status + ')'); return false; }
     customViews = j.views; _lsSet('nm_dash_views_' + _who(), JSON.stringify(customViews)); _cvTabsSig = '';
-    closeCustomViewEditor();
+    if (!keepOpen) closeCustomViewEditor();
     if (goTo) setCategory(goTo); else { if (String(currentCategory).startsWith('cv:') && !customViews.some(v => 'cv:' + v.id === currentCategory)) setCategory('all'); else updateCategoryTabs(allDevices); }
     showToast(okMsg, 'success'); return true;
   } catch (e) { msg.className = 'cv-msg'; msg.textContent = 'Could not save: ' + e.message; return false; }
 }
-async function saveCustomView() {
+async function saveCustomView(closeAfter) {
   const name = document.getElementById('cv-name').value.trim(), msg = document.getElementById('cv-msg');
   if (!name) { msg.className = 'cv-msg'; msg.textContent = 'Give the view a name.'; return; }
   if (!_cvOrder.length) { msg.className = 'cv-msg'; msg.textContent = 'Tick at least one monitor.'; return; }
   const v = { id: _cvEditId || '', name, device_ids: [..._cvOrder], priority: document.getElementById('cv-prio').checked };
   const list = _cvEditId ? customViews.map(x => x.id === _cvEditId ? Object.assign({}, x, v, { id: x.id }) : x) : customViews.concat([v]);
   const before = new Set(customViews.map(x => x.id));
-  const ok = await _cvPost(list, 'Custom view saved \u2713');
-  if (ok) { const made = customViews.find(x => !before.has(x.id)); setCategory('cv:' + (_cvEditId || (made && made.id) || customViews[customViews.length - 1].id)); }
+  const keep = closeAfter === false;   // plain Save keeps the editor open, Save & close (or no argument) closes it
+  const ok = await _cvPost(list, 'Custom view saved \u2713', null, keep);
+  if (ok) {
+    const made = customViews.find(x => !before.has(x.id)), id = _cvEditId || (made && made.id) || customViews[customViews.length - 1].id;
+    setCategory('cv:' + id);
+    if (keep) { _cvEditId = id; const p = document.getElementById('cv-pick'); p.innerHTML = '<option value="">+ New view</option>' + customViews.map(v => '<option value="' + v.id + '">' + escHtml(v.name) + '</option>').join(''); p.value = id; document.getElementById('cv-title').textContent = 'Edit custom view'; document.getElementById('cv-del').style.display = ''; const m = document.getElementById('cv-msg'); m.className = 'cv-msg ok'; m.textContent = 'Saved \u2713'; }
+  }
 }
 async function deleteCustomView() {
   const v = customViews.find(x => x.id === _cvEditId); if (!v) return;
@@ -1425,8 +1430,10 @@ function renderDeviceSettings(meta, data) {
     '<p class="ds-note">Grey numbers are what applies now and <strong>Comes from</strong> says where they are set. Type a value to give <strong>this device</strong> its own; leave a box empty to inherit. Hover or click the <span class="thr-i" style="pointer-events:none">!</span> for details.</p>' +
     '<div style="overflow-x:auto">' + table + '</div>' +
     '<div class="ds-actions">' +
-      '<button type="button" class="btn primary" onclick="saveDeviceSettings()">Save thresholds</button>' +
-      '<button type="button" class="btn secondary" onclick="resetDeviceSettings()">Use inherited values</button>' +
+      '<button type="button" class="btn primary" onclick="saveDeviceSettings(false)" title="Save and keep this window open">Save</button>' +
+      '<button type="button" class="btn primary" onclick="saveDeviceSettings(true)" title="Save and close this window">Save &amp; close</button>' +
+      '<button type="button" class="btn secondary" onclick="closeDeviceSettings()" title="Close without saving">Cancel</button>' +
+      '<button type="button" class="btn secondary small" onclick="resetDeviceSettings()" title="Empty every box so this device follows the inherited values (then press Save)">Use inherited values</button>' +
       '<span id="ds-status" class="ds-status"></span>' +
     '</div>' +
     '<div class="apply-timing" id="ds-apply-thr"></div>' +
@@ -1463,13 +1470,14 @@ async function dsApplyThr(key) {
 
 function dsStatus(msg, ok) { const e = document.getElementById('ds-status'); if (e) { e.textContent = msg; e.style.color = ok ? 'var(--status-ok)' : 'var(--status-critical)'; } }
 
-async function saveDeviceSettings() {
+async function saveDeviceSettings(closeAfter) {
   const meta = ThrUI.get(); if (!meta || !_dsDevice) return;
   const { thresholds, errors } = ThrUI.collect(meta, _dsKeys, DS_IDS, { wait: true });
   if (errors.length) { dsStatus(errors[0], false); return; }
   const r = await fetch('/api/devices/' + encodeURIComponent(_dsDevice) + '/thresholds', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ thresholds: ThrUI.compact(thresholds) }) });
   let j = {}; try { j = await r.json(); } catch (_) {}
   if (!r.ok || !j.ok) { dsStatus((j && j.error) || ('Save failed (' + r.status + ')'), false); return; }
+  if (closeAfter) { closeDeviceSettings(); showToast('Saved \u2713', 'success'); return; }
   dsStatus('Saved \u2713 (' + j.overrides + ' own value' + (j.overrides === 1 ? '' : 's') + ') \u2014 applies from the next check', true);
   openDeviceSettings(_dsDevice).then(() => dsStatus('Saved \u2713 \u2014 applies from the next check', true));
 }

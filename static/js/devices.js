@@ -519,7 +519,11 @@ async function renderThresholdRows(saved, deviceId){
   catch(e){ container.innerHTML = '<div style="color:var(--status-critical);padding:8px">Could not load the metric list ('+ThrUI.esc(e.message)+'). Close and reopen this window.</div>'; return; }
   const method = (window._devMethods||{})[deviceId] || "ping";
   _nmMetrics = ThrUI.metricsFor(meta, method);
-  container.innerHTML = ThrUI.tableHTML(meta, _nmMetrics, saved, NM_THR_IDS, {wait:false}) +
+  // V11.3 patch 08: show what a blank box really falls back to (type / method / global value) and where it comes from,
+  // instead of always showing the built-in numbers.
+  let inh = {inherit:{}, sources:{}};
+  try { const r = await fetch("/api/devices/" + encodeURIComponent(deviceId) + "/thresholds", {headers: authHeaders()}); if(r.ok) inh = ThrUI.inheritInfo(await r.json()); } catch(_){}
+  container.innerHTML = ThrUI.tableHTML(meta, _nmMetrics, saved, NM_THR_IDS, {wait:false, inherit:inh.inherit, sources:inh.sources}) +
     '<div style="margin-top:8px"><button type="button" class="btn secondary small" onclick="nmFillRecommended()">Fill recommended values</button></div>';
 }
 function nmFillRecommended(){
@@ -551,7 +555,7 @@ function _getCallNumbers(level){
   return ta ? phoneListToArr(ta.value) : [];
 }
 
-async function saveNotifyModal(){
+async function saveNotifyModal(closeAfter){
   const levels = parseInt(document.getElementById("nm-esc-levels").value||"1");
   const thr = collectThresholds();
   if(thr.errors.length){
@@ -584,8 +588,10 @@ async function saveNotifyModal(){
     {method:"POST", headers:authHeaders(), body:JSON.stringify(payload)});
   const st = document.getElementById("nm-status");
   if(r.ok){
+    if(closeAfter){ closeNotifyModal(); showToast("Saved ✓","success"); return; }
     st.textContent="Saved ✓"; st.style.color="var(--status-ok)";
     setTimeout(()=>st.textContent="",2500);
+    ThrUI.resetContext(); renderThresholdRows(payload.thresholds||{}, _notifyDeviceId);   // show the saved values / what they inherit
   } else {
     let em = "Save failed";
     try { const j = await r.json(); if(j && j.error) em = j.error; } catch(_){}
@@ -629,9 +635,9 @@ async function nmRenderBars(deviceId){
   let ctx; try{ ThrUI.resetContext(); ctx = await ThrUI.context(deviceId); }catch(e){ return; }
   if(deviceId !== _notifyDeviceId) return;
   const fi = nmFilterIds(), narrowed = fi.length > 0 && fi.length < (_devList||[]).length;
-  _nmTargets = ThrUI.targets(ctx.dev, ctx.facets, narrowed ? fi : null, {every:true, methods:ctx.methodOf});
+  _nmTargets = ThrUI.targets(ctx.dev, ctx.facets, narrowed ? fi : null, {methods:ctx.methodOf});
   if(tb) tb.innerHTML = ThrUI.barHTML("Apply wait & cooldown to:", _nmTargets, "nmApplyTiming");
-  if(hb) hb.innerHTML = ThrUI.barHTML("Apply the thresholds above to:", _nmTargets.filter(t => t.key !== "all"), "nmApplyThr");
+  if(hb) hb.innerHTML = ThrUI.barHTML("Apply the thresholds above to:", _nmTargets, "nmApplyThr");
 }
 async function nmApplyTiming(key){
   const t = _nmTargets.find(x => x.key === key); if(!t) return;
@@ -642,7 +648,8 @@ async function nmApplyThr(key){
   const t = _nmTargets.find(x => x.key === key); if(!t) return;
   const col = collectThresholds();
   if(col.errors.length){ showToast(col.errors[0], "error"); return; }
-  try{ const res = await ThrUI.applyThr(t, col.thresholds); if(res.cancelled) return; showToast(res.message, res.ok ? "success" : "error"); }
+  try{ const res = await ThrUI.applyThr(t, col.thresholds); if(res.cancelled) return; showToast(res.message, res.ok ? "success" : "error");
+    if(res.ok){ const c = await (await fetch("/api/devices/"+encodeURIComponent(_notifyDeviceId)+"/notify",{headers:authHeaders()})).json(); renderThresholdRows(c.thresholds||{}, _notifyDeviceId); } }
   catch(e){ showToast("Apply failed: " + e.message, "error"); }
 }
 

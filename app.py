@@ -840,7 +840,7 @@ def api_add_device():
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
     cfg = config_manager.add_or_update_device(device)
-    sched.reload_scheduler(cfg)
+    sched.reload_scheduler(cfg, poll_now={device["id"]})
     db.audit_log(_email(), "add_device", device.get("id",""), "")
     return jsonify({"ok": True})
 
@@ -851,7 +851,7 @@ def api_update_device(device_id):
     device = request.get_json(force=True)
     device["id"] = device_id
     cfg = config_manager.add_or_update_device(device)
-    sched.reload_scheduler(cfg)
+    sched.reload_scheduler(cfg, poll_now={device_id})
     db.audit_log(_email(), "edit_device", device_id, "")
     return jsonify({"ok": True})
 
@@ -937,6 +937,16 @@ def api_test_device(device_id):
 
 
 # ── per-device notifications ───────────────────────────────────────────────
+@app.route("/api/devices/notify-all", methods=["GET"])
+def api_get_all_notify():
+    """V11.3 patch 08: every device's notification settings in one call ({device_id: settings}). Replaces N separate
+    /notify calls that the Settings tables made after every save."""
+    err = _require_admin()
+    if err: return err
+    ids = [d["id"] for d in config_manager.get_config().get("devices", [])]
+    return jsonify({"notify": db.get_all_device_notify(ids)})
+
+
 @app.route("/api/devices/<device_id>/notify", methods=["GET"])
 def api_get_notify(device_id):
     err = _require_admin()
@@ -1393,6 +1403,11 @@ def api_get_device_thresholds(device_id):
     eff = alerts_engine.effective_thresholds(d, gl, notify, sc)
     src = _threshold_sources(d, notify, sc, gl)
     own = notify.get("thresholds") or {}
+    # V11.3 patch 08: what each box falls back to when this device's OWN value is blank (so the Notify windows can show
+    # the real inherited number, e.g. the Firewall value, instead of the built-in default).
+    base = dict(notify); base["thresholds"] = {}
+    eff0 = alerts_engine.effective_thresholds(d, gl, base, sc)
+    src0 = _threshold_sources(d, base, sc, gl)
     meta = threshold_meta.public_catalogue()["metrics"]
     keys = threshold_meta.METHOD_METRICS.get(d.get("method") or "ping", threshold_meta.DEVICE_METRICS)
     st = next((r for r in db.get_all_device_status() if r["device_id"] == device_id), {}) or {}
@@ -1401,7 +1416,10 @@ def api_get_device_thresholds(device_id):
         e = eff.get(k, {})
         rows.append({"key": k, "label": meta[k]["label"], "unit": meta[k]["unit"], "lower_is_worse": bool(meta[k].get("lower_is_worse")),
                      "effective": {"warning": e.get("warning"), "critical": e.get("critical"), "enabled": e.get("enabled", True) is not False},
-                     "source": src.get(k, "built-in"), "override": {f: own.get(k, {}).get(f) for f in ("enabled", "warning", "critical", "wait_sec") if f in (own.get(k) or {})}})
+                     "source": src.get(k, "built-in"),
+                     "inherited": {"warning": eff0.get(k, {}).get("warning"), "critical": eff0.get(k, {}).get("critical"),
+                                   "enabled": eff0.get(k, {}).get("enabled", True) is not False, "source": src0.get(k, "built-in")},
+                     "override": {f: own.get(k, {}).get(f) for f in ("enabled", "warning", "critical", "wait_sec") if f in (own.get(k) or {})}})
     return jsonify({
         "device": {"id": device_id, "name": d.get("name"), "host": d.get("host"), "type": d.get("type") or "",
                    "type_label": threshold_meta.TYPE_LABELS.get(d.get("type") or "", d.get("type") or ""),
@@ -2459,7 +2477,7 @@ def api_networkscan_add_devices():
         config_manager.add_or_update_device(device)
         added += 1
     if added:
-        sched.reload_scheduler(config_manager.get_config())
+        sched.reload_scheduler(config_manager.get_config())   # new devices poll at once; existing ones keep their schedule
         db.audit_log(_email(), "scan_add_devices", f"{added} devices", "")
     return jsonify({"ok": True, "added": added})
 

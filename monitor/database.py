@@ -527,31 +527,29 @@ def set_tile_order(device_ids):
 # ============================================================
 # Per-device notification config (V3.4 multi-level escalation)
 # ============================================================
-def get_device_notify(device_id):
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM device_notify WHERE device_id=?", (device_id,)).fetchone()
-    conn.close()
-    if row:
-        r = dict(row)
-        r["notify_emails"]         = json.loads(r.get("notify_emails_json") or "[]")
-        r["escalation_emails_l1"]  = json.loads(r.get("escalation_emails_l1_json") or "[]")
-        r["escalation_emails_l2"]  = json.loads(r.get("escalation_emails_l2_json") or "[]")
-        r["escalation_emails_l3"]  = json.loads(r.get("escalation_emails_l3_json") or "[]")
-        r["thresholds"]            = json.loads(r.get("thresholds_json") or "{}")
-        # Back-compat: escalation_emails = L1 list
-        r["escalation_emails"]     = r["escalation_emails_l1"]
-        r["escalation_after_sec"]  = r.get("escalation_after_sec_l1", 60)
-        r["alert_trigger_mode"]    = r.get("alert_trigger_mode") or "sustained"
-        r["alert_notify_mode"]     = r.get("alert_notify_mode") or "immediate"
-        r["notify_cooldown_sec"]   = r.get("notify_cooldown_sec") or 300
-        r["sms_numbers_l1"]        = json.loads(r.get("sms_numbers_l1_json") or "[]")
-        r["sms_numbers_l2"]        = json.loads(r.get("sms_numbers_l2_json") or "[]")
-        r["sms_numbers_l3"]        = json.loads(r.get("sms_numbers_l3_json") or "[]")
-        r["call_numbers_l1"]       = json.loads(r.get("call_numbers_l1_json") or "[]")
-        r["call_numbers_l2"]       = json.loads(r.get("call_numbers_l2_json") or "[]")
-        r["call_numbers_l3"]       = json.loads(r.get("call_numbers_l3_json") or "[]")
-        return r
+def _decode_notify_row(row):
+    r = dict(row)
+    r["notify_emails"]         = json.loads(r.get("notify_emails_json") or "[]")
+    r["escalation_emails_l1"]  = json.loads(r.get("escalation_emails_l1_json") or "[]")
+    r["escalation_emails_l2"]  = json.loads(r.get("escalation_emails_l2_json") or "[]")
+    r["escalation_emails_l3"]  = json.loads(r.get("escalation_emails_l3_json") or "[]")
+    r["thresholds"]            = json.loads(r.get("thresholds_json") or "{}")
+    # Back-compat: escalation_emails = L1 list
+    r["escalation_emails"]     = r["escalation_emails_l1"]
+    r["escalation_after_sec"]  = r.get("escalation_after_sec_l1", 60)
+    r["alert_trigger_mode"]    = r.get("alert_trigger_mode") or "sustained"
+    r["alert_notify_mode"]     = r.get("alert_notify_mode") or "immediate"
+    r["notify_cooldown_sec"]   = r.get("notify_cooldown_sec") or 300
+    r["sms_numbers_l1"]        = json.loads(r.get("sms_numbers_l1_json") or "[]")
+    r["sms_numbers_l2"]        = json.loads(r.get("sms_numbers_l2_json") or "[]")
+    r["sms_numbers_l3"]        = json.loads(r.get("sms_numbers_l3_json") or "[]")
+    r["call_numbers_l1"]       = json.loads(r.get("call_numbers_l1_json") or "[]")
+    r["call_numbers_l2"]       = json.loads(r.get("call_numbers_l2_json") or "[]")
+    r["call_numbers_l3"]       = json.loads(r.get("call_numbers_l3_json") or "[]")
+    return r
+
+
+def _default_notify(device_id):
     return {
         "device_id": device_id,
         "notifications_enabled": 1,
@@ -572,6 +570,26 @@ def get_device_notify(device_id):
         "sms_numbers_l1": [], "sms_numbers_l2": [], "sms_numbers_l3": [],
         "call_numbers_l1": [], "call_numbers_l2": [], "call_numbers_l3": [],
     }
+
+
+def get_device_notify(device_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM device_notify WHERE device_id=?", (device_id,)).fetchone()
+    conn.close()
+    return _decode_notify_row(row) if row else _default_notify(device_id)
+
+
+def get_all_device_notify(device_ids=()):
+    """V11.3 patch 08: every device's notification settings in ONE query. The Settings tables used to ask for them one
+    device at a time (N requests, N connections) every time anything was saved."""
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM device_notify").fetchall()
+    conn.close()
+    out = {r["device_id"]: _decode_notify_row(r) for r in rows}
+    for did in device_ids:
+        out.setdefault(did, _default_notify(did))
+    return out
 
 
 def set_device_notify(device_id, notifications_enabled, notify_emails,
@@ -642,22 +660,6 @@ def set_device_notify(device_id, notifications_enabled, notify_emails,
                   json.dumps(call_numbers_l2 or []),
                   json.dumps(call_numbers_l3 or [])))
         conn.close()
-
-
-def get_all_device_notify():
-    conn = get_connection()
-    rows = conn.execute("SELECT * FROM device_notify").fetchall()
-    conn.close()
-    out = {}
-    for r in rows:
-        d = dict(r)
-        d["notify_emails"]        = json.loads(d.get("notify_emails_json") or "[]")
-        d["escalation_emails_l1"] = json.loads(d.get("escalation_emails_l1_json") or "[]")
-        d["escalation_emails_l2"] = json.loads(d.get("escalation_emails_l2_json") or "[]")
-        d["escalation_emails_l3"] = json.loads(d.get("escalation_emails_l3_json") or "[]")
-        d["thresholds"]           = json.loads(d.get("thresholds_json") or "{}")
-        out[d["device_id"]] = d
-    return out
 
 
 # ============================================================

@@ -181,10 +181,9 @@
         </div>
         <div class="apply-timing">
           <span class="lbl">Apply wait &amp; cooldown to:</span>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('all','esc-g')">All devices &amp; sites</button>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('devices','esc-g')">Devices only</button>
-          <button type="button" class="btn secondary small" onclick="applyTimingBtn('sites','esc-g')">Sites only</button>
-          <button type="button" class="btn secondary small" onclick="applyEscFilter()" title="Applies to the monitors your search / type / method filter above is showing">Current search / filter</button>
+          <button type="button" class="btn secondary small" onclick="applyTimingBtn('devices','esc-g')">All devices</button>
+          <button type="button" class="btn secondary small" onclick="applyTimingBtn('sites','esc-g')">All sites</button>
+          <button type="button" class="btn secondary small" onclick="applyEscFilter()" title="Pick a type or check method in the filter above (or type in the search box), then press this: it applies to exactly the monitors the list is showing">Current search / filter</button>
         </div>
         <p style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0;">Uses the <em>Alert trigger mode</em>, wait seconds and cooldown shown above (no need to save first). Changes only these timing settings — emails, SMS/call numbers, escalation levels and thresholds stay as they are.</p>
       </div>
@@ -578,8 +577,9 @@
         <div id="snm-esc-container"></div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;">
-        <button class="btn primary" onclick="saveSettNotifyModal()">Save</button>
-        <button class="btn secondary" onclick="closeSettNotifyModal()">Cancel</button>
+        <button class="btn primary" onclick="saveSettNotifyModal(false)" title="Save and keep this window open">Save</button>
+        <button class="btn primary" onclick="saveSettNotifyModal(true)" title="Save and close this window">Save &amp; close</button>
+        <button class="btn secondary" onclick="closeSettNotifyModal()" title="Close without saving">Cancel</button>
         <span id="snm-status" style="font-size:13px;"></span>
       </div>
     </div>

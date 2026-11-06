@@ -191,21 +191,25 @@ def _poll_device(device, app_cfg):
     db.upsert_device_status(did, dname, device.get("type","network"),
                             method, host, overall, metrics, error=error_msg)
 
-    for metric, (state, value, _) in metric_states.items():
-        if isinstance(value, (int, float)):
-            db.record_metric(did, metric, value, state)
+    # V11.3 patch 08: all the database writes of ONE poll (every metric row + the alert bookkeeping) in a single
+    # transaction instead of one connection + commit each. The e-mail/SMS part below stays outside it, so a slow
+    # SMTP server never holds the database write lock.
+    with db.batch():
+        for metric, (state, value, _) in metric_states.items():
+            if isinstance(value, (int, float)):
+                db.record_metric(did, metric, value, state)
 
-        # V7.2: Active-alert lifecycle (Alert Event Logs page).
-        # A metric in warning/critical opens (or refreshes) an active alert;
-        # a metric back to ok silently auto-resolves any open alert for it.
-        if state in ("warning", "critical"):
-            db.upsert_active_alert(
-                did, dname, host, metric, state,
-                f"{dname} ({host}) — {metric.replace('_',' ')} is {state}"
-                f"{': ' + str(round(value,1)) if isinstance(value,(int,float)) else ''}"
-            )
-        elif state == "ok":
-            db.auto_resolve_active_alerts(did, metric)
+            # V7.2: Active-alert lifecycle (Alert Event Logs page).
+            # A metric in warning/critical opens (or refreshes) an active alert;
+            # a metric back to ok silently auto-resolves any open alert for it.
+            if state in ("warning", "critical"):
+                db.upsert_active_alert(
+                    did, dname, host, metric, state,
+                    f"{dname} ({host}) — {metric.replace('_',' ')} is {state}"
+                    f"{': ' + str(round(value,1)) if isinstance(value,(int,float)) else ''}"
+                )
+            elif state == "ok":
+                db.auto_resolve_active_alerts(did, metric)
 
     smtp_cfg  = app_cfg.get("smtp", {})
     resend    = smtp_cfg.get("resend_interval_minutes", 30)
@@ -222,12 +226,35 @@ def start_scheduler(app_cfg):
     log.info("Scheduler started with %d device(s)", len(app_cfg.get("devices", [])))
 
 
-def reload_scheduler(app_cfg):
+def reload_scheduler(app_cfg, poll_now=()):
+    """V11.3 patch 08: bring the jobs in line with the config WITHOUT restarting every poll. It used to remove all jobs and
+    re-add them with next_run_time=now, so saving ONE device made EVERY device (SSH, PowerShell, SNMP, URL...) poll at
+    once. Now: existing jobs keep their schedule (they just get the fresh device settings), deleted devices lose their
+    job, new devices poll at once, and only the devices listed in `poll_now` are re-polled immediately."""
     global _scheduler
-    if _scheduler:
-        _scheduler.remove_all_jobs()
-        _add_jobs(app_cfg)
-        log.info("Scheduler reloaded: %d device(s)", len(app_cfg.get("devices", [])))
+    if not _scheduler:
+        return
+    import datetime
+    default_interval = app_cfg.get("defaults", {}).get("poll_interval_seconds", 30)
+    wanted = set()
+    for device in app_cfg.get("devices", []):
+        did = device["id"]; wanted.add(did)
+        interval = device.get("poll_interval_seconds", default_interval)
+        job = _scheduler.get_job(did)
+        if job is None:
+            _scheduler.add_job(_poll_device, "interval", seconds=interval, args=[device, app_cfg], id=did,
+                               next_run_time=datetime.datetime.now(), misfire_grace_time=60, coalesce=True)
+            continue
+        job.modify(args=[device, app_cfg])
+        cur = getattr(job.trigger, "interval", None)
+        if cur is None or int(cur.total_seconds()) != int(interval):
+            _scheduler.reschedule_job(did, trigger="interval", seconds=interval)
+        if did in poll_now:
+            job.modify(next_run_time=datetime.datetime.now())
+    for job in _scheduler.get_jobs():
+        if job.id not in wanted:
+            _scheduler.remove_job(job.id)
+    log.info("Scheduler synced: %d device(s), %d polled now", len(wanted), len(set(poll_now) & wanted))
 
 
 def _add_jobs(app_cfg):

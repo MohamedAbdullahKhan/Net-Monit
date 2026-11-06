@@ -191,8 +191,9 @@
       </div>
 
       <div style="display:flex;gap:10px;align-items:center;">
-        <button class="btn primary" onclick="saveNotifyModal()">Save</button>
-        <button class="btn secondary" onclick="closeNotifyModal()">Cancel</button>
+        <button class="btn primary" onclick="saveNotifyModal(false)" title="Save and keep this window open">Save</button>
+        <button class="btn primary" onclick="saveNotifyModal(true)" title="Save and close this window">Save &amp; close</button>
+        <button class="btn secondary" onclick="closeNotifyModal()" title="Close without saving">Cancel</button>
         <span id="nm-status" style="font-size:13px;"></span>
       </div>
     </div>

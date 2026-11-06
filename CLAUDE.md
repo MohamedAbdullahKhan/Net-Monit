@@ -120,3 +120,26 @@ order" is on (default), re-sorted on every 5 s poll. The tab carries a dot with 
 (Edit layout) only works on the built-in tabs.
 **Lesson.** A saved custom tab can be restored BEFORE the views are loaded (fresh browser). Never treat "view not found" as
 "view deleted" until `_cvLoaded` is true, or the restore silently resets to General.
+
+
+## Patch 08 (V11.3): "apply to ..." really applies; real cause of slow saves; Save / Save & close / Cancel
+
+**Why "apply to all firewalls" looked like it did nothing.** "Same type / same method / all" used to save a hidden type
+default and REMOVE the devices' own values. The engine did use it, but every other firewall's window still showed the old
+grey built-in numbers (the Devices-page and Settings notify windows never displayed inherited values). Now every target
+(this device, same type, same method, all devices/sites, current search/filter) is written with ONE endpoint
+`POST /api/devices/thresholds/apply {ids | kind+key | scope, thresholds}` as each monitor's OWN value (visible everywhere),
+and blank boxes show the real inherited value + where it comes from (`inherited` in `GET /api/devices/<id>/thresholds`,
+`ThrUI.inheritInfo`). "Every device & site" removed; options now: This device only / All <type> devices / All <method>
+monitors / All devices (or All sites) / Current search / filter.
+
+**Slow saves, real causes.** (1) Settings notify window: after every save it reloaded FOUR tables, each making one request per
+device (the Notifications table one after another): 70+ round trips on 24 monitors. Now ONE bulk request
+(`GET /api/devices/notify-all`, `db.get_all_device_notify`) and only the visible table reloads; "Save & close" closes at once.
+(2) `reload_scheduler` removed and re-added EVERY job with next_run_time=now, so saving ONE device polled ALL devices at once
+(SSH/PowerShell/SNMP/URL). Now jobs keep their schedule, get fresh settings, and only the saved/new device polls now.
+(3) Each poll wrote every metric with its own connection+commit; now one `db.batch()` per poll (SMTP stays outside it).
+Lesson: when a save "feels slow", count the requests the page makes after it, not just the save call.
+
+**Buttons.** Notify windows (Devices, Settings), dashboard device window and custom-view editor: Save (stay open) /
+Save & close / Cancel (close, nothing saved). Escalation tab: All devices / All sites / Current search / filter.
