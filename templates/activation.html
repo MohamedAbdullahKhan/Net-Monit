@@ -2,7 +2,7 @@
 {% block content %}
 <div class="page-header">
   <h1 class="page-title">License &amp; Activation</h1>
-  <p class="page-subtitle">Manage your Net-monit V11.3 license</p>
+  <p class="page-subtitle">Manage your Net-monit V12.4 license</p>
 </div>
 
 <div style="max-width:780px;margin:0 auto;">
@@ -177,7 +177,7 @@
 
   <!-- About footer -->
   <div style="text-align:center;font-size:12px;color:var(--text-muted);padding:12px 0 24px;">
-    Net-monit V11.3 · © 2024–2026 Abdullah · <a href="mailto:abuabdullah.be@outlook.com" style="color:var(--text-muted);">abuabdullah.be@outlook.com</a>
+    Net-monit V12.4 · © 2024–2026 Abdullah · <a href="mailto:abuabdullah.be@outlook.com" style="color:var(--text-muted);">abuabdullah.be@outlook.com</a>
   </div>
 
 </div>
@@ -313,7 +313,7 @@ function loadLicenseStatus() {
         msgEl.style.display = 'block';
         msgEl.style.background = 'rgba(30,80,140,0.15)';
         msgEl.style.border = '1px solid #1e508c';
-        msgEl.innerHTML = `ℹ You are using Net-monit V11.3 on a <strong>free 30-day trial</strong>. You have <strong>${d.trial_days_remaining} days remaining</strong>. Enter a license key before the trial expires to retain full access.`;
+        msgEl.innerHTML = `ℹ You are using Net-monit V12.4 on a <strong>free 30-day trial</strong>. You have <strong>${d.trial_days_remaining} days remaining</strong>. Enter a license key before the trial expires to retain full access.`;
       } else if (d.state === 'trial' && d.trial_days_remaining <= 7) {
         msgEl.style.display = 'block';
         msgEl.style.background = 'rgba(180,130,0,0.15)';

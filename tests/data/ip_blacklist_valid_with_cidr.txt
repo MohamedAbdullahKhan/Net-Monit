@@ -1,0 +1,9 @@
+8.8.8.8
+2001:db8::1
+1.2.3.0/24
+2001:db9::/32 # IPv6 test network
+5.6.7.0/24 ; SBL123456
+9.9.9.0/24 # inline hash comment
+# full-line hash comment
+; full-line semicolon comment
+invalid text that should be ignored

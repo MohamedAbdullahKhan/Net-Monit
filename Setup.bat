@@ -1,13 +1,13 @@
 @echo off
 setlocal EnableDelayedExpansion
-title Net-monit V11.3 Setup Wizard
+title Net-monit V12.4 Setup Wizard
 
 echo.
 echo  ======================================================
-echo   Net-monit V11.3 Setup Wizard
+echo   Net-monit V12.4 Setup Wizard
 echo   Copyright (c) 2024-2026 Abdullah-InfoXtek.com
 echo   Contact: abuabdullah.be@outlook.com
-echo   Default port: 50113
+echo   Default port: 5050
 echo  ======================================================
 echo.
 
@@ -123,6 +123,12 @@ endlocal
 exit /b 1
 
 :LAUNCHWIZARD
+REM ---- V12.4: required app #2 = Npcap (packet capture add-on). Silent with an OEM installer in setup\deps, otherwise guided.
+if exist "%ROOT%setup\Install-Npcap.ps1" (
+    echo [Setup] Checking Npcap ^(packet capture driver^)...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%setup\Install-Npcap.ps1"
+    echo.
+)
 if not exist "%WIZARD%" (
     echo [ERROR] Setup wizard script not found at:
     echo         %WIZARD%
@@ -131,7 +137,7 @@ if not exist "%WIZARD%" (
     goto :PSWIZARD
 )
 
-echo [Setup] Launching Net-monit V11.3 Setup Wizard...
+echo [Setup] Launching Net-monit V12.4 Setup Wizard...
 echo [Setup] A window should open shortly. If nothing appears in
 echo [Setup] a few seconds, check for errors printed below.
 echo.
@@ -162,7 +168,7 @@ if not exist "%PS_WIZARD%" (
     echo [ERROR] No setup wizard found anywhere in this package.
     echo         Expected: %WIZARD%
     echo         Expected: %PS_WIZARD%
-    echo         Please re-download/re-extract Net-monit V11.3.
+    echo         Please re-download/re-extract Net-monit V12.4.
     pause
     endlocal
     exit /b 1

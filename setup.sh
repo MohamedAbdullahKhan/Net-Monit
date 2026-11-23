@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Net-monit V11.3 -- Linux Setup Script
+# Net-monit V12.4 -- Linux Setup Script
 # Copyright (c) 2024-2026 Abdullah | Abdullah-InfoXtek.com
 # Contact: abuabdullah.be@outlook.com
-# Usage: sudo bash setup.sh [--port 50113] [--path /opt/netmonit-v113] [--svc netmonit-v113]
+# Usage: sudo bash setup.sh [--port 5050] [--path /opt/netmonit-v124] [--svc netmonit-v124]
 # =============================================================================
 set -euo pipefail
 
-APP_VER="V11.3"
-DEFAULT_PORT=50113
-DEFAULT_PATH="/opt/netmonit-v113"
-DEFAULT_SVC="netmonit-v113"
+APP_VER="V12.4"
+DEFAULT_PORT=5050
+DEFAULT_PATH="/opt/netmonit-v124"
+DEFAULT_SVC="netmonit-v124"
 SVC_USER="netmonit"
 
 GREEN="\033[0;32m"; YELLOW="\033[0;33m"; RED="\033[0;31m"
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
         --port) PORT="$2"; shift 2 ;;
         --path) INSTALL_PATH="$2"; shift 2 ;;
         --svc)  SVC_NAME="$2"; shift 2 ;;
-        --help) echo "Usage: sudo bash setup.sh [--port 50113] [--path /opt/netmonit-v113] [--svc netmonit-v113]"; exit 0 ;;
+        --help) echo "Usage: sudo bash setup.sh [--port 5050] [--path /opt/netmonit-v124] [--svc netmonit-v124]"; exit 0 ;;
         *) shift ;;
     esac
 done
@@ -152,6 +152,9 @@ Wants=network-online.target
 Type=simple
 User=$SVC_USER
 Group=$SVC_USER
+# V12 Traffic Analyzer: lets the service capture packets without running as root
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
 WorkingDirectory=$INSTALL_PATH
 ExecStart=$PY_VENV $INSTALL_PATH/app.py
 Restart=on-failure

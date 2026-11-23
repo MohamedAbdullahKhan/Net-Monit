@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Net-monit V11.3{% if title %} — {{ title }}{% endif %}</title>
+  <title>Net-monit V12.4{% if title %} — {{ title }}{% endif %}</title>
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
   <!-- V10.1: admin-set appearance defaults, injected before theme.js runs so
@@ -49,7 +49,7 @@
           <a href="#" id="li-forgot-link" style="font-size:12.5px;color:var(--text-muted);">Forgot your token?</a>
         </p>
         <p style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">
-          Net-monit V11.3 · © 2024–2026 Abdullah
+          Net-monit V12.4 · © 2024–2026 Abdullah
         </p>
       </div>
     </div>
@@ -135,7 +135,7 @@
       <nav class="topbar-nav">
         <a href="/admin"    class="nav-link{% if active=='admin' %} active{% endif %}">Admin Panel</a>
         <a href="/activation" class="nav-link{% if active=='activation' %} active{% endif %}" id="nav-license" style="display:none;">License</a>
-        <a href="/about" class="nav-link{% if active=='about' %} active{% endif %}">About Net-monit V11.3</a>
+        <a href="/about" class="nav-link{% if active=='about' %} active{% endif %}">About Net-monit V12.4</a>
       </nav>
     </div>
     <div class="topbar-right">
@@ -178,6 +178,10 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="8" height="8" rx="1"/></svg>
           Network Scan
         </a>
+        <a href="/traffic" class="sidebar-link{% if active=='traffic' %} active{% endif %}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
+          Traffic
+        </a>
         <a href="/settings" class="sidebar-link{% if active=='settings' %} active{% endif %}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           Settings
@@ -204,7 +208,7 @@
   </div>
 
   <footer class="app-footer">
-    <span>© 2024–2026 Net-monit V11.3 — Developed by <a href="mailto:abuabdullah.be@outlook.com" style="color:var(--accent)">Abdullah</a> — InfoXtek.com</span>
+    <span>© 2024–2026 Net-monit V12.4 — Developed by <a href="mailto:abuabdullah.be@outlook.com" style="color:var(--accent)">Abdullah</a> — InfoXtek.com</span>
   </footer>
 
   <script src="/static/js/auth.js"></script>

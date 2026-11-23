@@ -1,12 +1,12 @@
 # =============================================================================
-# Net-monit V11.3
+# Net-monit V12.4
 # Copyright (c) 2024-2026 Abdullah | Abdullah-InfoXtek.com
 # Contact: abuabdullah.be@outlook.com
 # Unauthorised copying, modification or distribution is strictly prohibited.
 # =============================================================================
 """
-app.py -- Net-monit V11.3
-Port   : 50113
+app.py -- Net-monit V12.4
+Port   : 5050
 Supports HTTP and HTTPS (set NETMON_SSL_CERT / NETMON_SSL_KEY env vars for HTTPS)
 """
 import json, logging, os, platform, re, secrets, time, warnings
@@ -56,8 +56,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("netmonit.app")
 
-APP_VERSION = "11.3"
-APP_PORT    = int(os.environ.get("NETMON_PORT", 50113))
+APP_VERSION = "12.4"
+APP_PORT    = int(os.environ.get("NETMON_PORT", 5050))
 SSL_CERT    = os.environ.get("NETMON_SSL_CERT", "")
 SSL_KEY     = os.environ.get("NETMON_SSL_KEY",  "")
 
@@ -259,7 +259,7 @@ def _patches_applied():
 
 @app.route("/about")
 def about_page():
-    return render_template("about.html", active="about", version=APP_VERSION, patches=_patches_applied())
+    return render_template("about.html", active="about", version=APP_VERSION, patches=_patches_applied(), port=APP_PORT)
 
 @app.route("/admin")
 def admin_page():
@@ -2030,6 +2030,18 @@ def sitesmonitor_page():
         return redirect("/")
     return render_template("urlmonitor.html", active="urlmonitor", version=APP_VERSION)
 
+# ── Traffic Analyzer (V12) ─────────────────────────────────────
+@app.route("/traffic")
+def traffic_page():
+    if _is_view_only():
+        return redirect("/")
+    return render_template("traffic.html", active="traffic", version=APP_VERSION)
+
+
+from monitor.traffic import api as _traffic_api                                  # noqa: E402  (routes /api/traffic/*)
+_traffic_api.register(app, _require_admin, _email, db.audit_log)
+
+
 @app.route("/networkscan")
 def networkscan_page():
     if _is_view_only():
@@ -2483,12 +2495,25 @@ def api_networkscan_add_devices():
 
 
 # ── startup ────────────────────────────────────────────────────────────────
+def traffic_startup():
+    """V12 Traffic Analyzer: tidy old data and resume an automatic capture. Called by initialize() AND by the Windows service
+    (which does not call initialize()). Never lets a problem here stop the rest of Net-monit."""
+    try:
+        from monitor.traffic import store as _tstore, manager as _tmgr
+        _tstore.mark_interrupted()
+        _tstore.purge_older_than(_tmgr.get_manager().settings()["retention_days"])
+        _tmgr.get_manager().autostart()
+    except Exception as _e:
+        logging.getLogger("netmonit").warning("Traffic Analyzer startup: %s", _e)
+
+
 def initialize():
     db.init_db()
     auth.seed_default_admin_if_empty()
     license_manager.refresh()
     cfg = config_manager.load_config()
     sched.start_scheduler(cfg)
+    traffic_startup()
     state = license_manager.state
     log.info("Net-monit V%s  port=%s  platform=%s  license=%s  devices=%d",
              APP_VERSION, APP_PORT, platform.system(), state,
@@ -2506,5 +2531,10 @@ if __name__ == "__main__":
         ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ssl_ctx.load_cert_chain(SSL_CERT, SSL_KEY)
         log.info("HTTPS enabled: cert=%s", SSL_CERT)
-    app.run(host="0.0.0.0", port=APP_PORT, debug=False,
+    from monitor import portcheck
+    _port, _why = portcheck.pick_port(APP_PORT)
+    if _why:
+        log.warning("%s", _why)
+    APP_PORT = _port; portcheck.remember(os.path.dirname(os.path.abspath(__file__)), _port)
+    app.run(host="0.0.0.0", port=_port, debug=False,
             use_reloader=False, ssl_context=ssl_ctx)

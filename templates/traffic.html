@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/traffic.css">
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Traffic Analyzer</h1>
+    <p class="page-sub">See what is using your network: every connection, host, service, program and country, live from a network card, a capture file or your routers' NetFlow/IPFIX.</p>
+  </div>
+  <div class="tr-actions">
+    <span id="tr-state" class="tr-state idle" role="status">Idle</span>
+    <button class="btn secondary small" id="tr-btn-pause" hidden>Pause</button>
+    <button class="btn danger small" id="tr-btn-stop" hidden>Stop</button>
+    <button class="btn secondary small" id="tr-btn-mini" title="Open a small always-on-top style window with the live rate">Mini monitor</button>
+  </div>
+</div>
+
+<div id="tr-err" class="tr-banner err" hidden></div>
+<div id="tr-note" class="tr-banner note" hidden></div>
+
+<section class="card tr-capture" id="tr-capture">
+  <div class="tr-capture-head">
+    <h2 class="card-title">Start a capture</h2>
+    <div id="tr-running-line" class="tr-running-line" hidden></div>
+  </div>
+  <div id="tr-capture-body">
+    <div class="tr-seg" role="tablist" aria-label="Capture source">
+      <button role="tab" class="on" data-src="device">Network card</button>
+      <button role="tab" data-src="pcap">Capture file</button>
+      <button role="tab" data-src="flows">NetFlow / IPFIX</button>
+    </div>
+    <div class="tr-grid">
+      <div data-for="device">
+        <label for="tr-iface">Network card</label>
+        <select id="tr-iface"></select>
+        <p class="tr-hint" id="tr-iface-hint">Needs administrator/root rights (the Net-monit service has them). No extra software is needed. On Windows, installing Npcap is optional: it adds MAC addresses, VLAN tags and advanced filters.</p>
+      </div>
+      <div data-for="pcap" hidden>
+        <label for="tr-pcap-file">Capture file (.pcap / .pcapng)</label>
+        <input id="tr-pcap-file" type="file" accept=".pcap,.pcapng,.cap">
+        <p class="tr-hint">The file is analysed on the server as fast as it can be read.</p>
+      </div>
+      <div data-for="flows" hidden>
+        <label for="tr-flow-port">UDP port to listen on</label>
+        <input id="tr-flow-port" type="number" value="2055" min="1" max="65535">
+        <label for="tr-flow-allow" style="margin-top:10px">Only accept from <span class="tr-opt">(optional)</span></label>
+        <input id="tr-flow-allow" type="text" placeholder="e.g. 10.0.0.1, 10.0.0.2" spellcheck="false">
+        <p class="tr-hint">Point the router/switch NetFlow v5, v9 or IPFIX export at this server and port. Allow the port in the firewall. UDP can be spoofed, so list the exporter addresses you trust; empty accepts every sender.</p>
+      </div>
+      <div data-for="device pcap">
+        <label for="tr-bpf">Filter <span class="tr-opt">(optional)</span></label>
+        <input id="tr-bpf" type="text" placeholder="e.g. tcp port 443   or   host 10.0.0.5 and not udp" spellcheck="false" autocomplete="off">
+        <p class="tr-hint">Examples: <a href="#" data-bpf="tcp port 443">tcp port 443</a> · <a href="#" data-bpf="host 8.8.8.8">host 8.8.8.8</a> · <a href="#" data-bpf="udp and not port 53">udp and not port 53</a> · <a href="#" data-bpf="net 192.168.0.0/16">net 192.168.0.0/16</a></p>
+      </div>
+      <div data-for="device" class="tr-check">
+        <label><input type="checkbox" id="tr-export"> Save the packets to a .pcap file (download later from History)</label>
+      </div>
+    </div>
+    <div class="tr-start-row"><button class="btn" id="tr-btn-start">Start capture</button><span id="tr-start-msg" class="tr-hint"></span><button class="btn" id="tr-btn-reset" hidden style="margin-left:10px">Reset capture</button></div>
+  </div>
+</section>
+
+<nav class="tr-tabs" role="tablist" aria-label="Traffic sections">
+  <button role="tab" class="on" data-tab="overview">Overview</button>
+  <button role="tab" data-tab="connections">Connections</button>
+  <button role="tab" data-tab="notifications">Notifications</button>
+  <button role="tab" data-tab="history">History</button>
+  <button role="tab" data-tab="settings">Settings</button>
+</nav>
+
+<!-- ============ OVERVIEW ============ -->
+<div class="tr-pane" id="pane-overview">
+  <div id="ov-empty" class="tr-empty">
+    <h3>No capture is running</h3>
+    <p>Choose a network card above and press <b>Start capture</b>. Net-monit then shows live traffic, the busiest hosts, services, programs and countries, and can alert you when traffic crosses a limit.</p>
+  </div>
+  <div id="ov-live" hidden>
+    <div class="tr-top">
+      <section class="tr-chartbox">
+        <div class="tr-chart-head">
+          <h2 class="card-title">Traffic per second</h2>
+          <div class="tr-ctl">
+            <div class="tr-seg small" id="ov-unit" aria-label="Unit"><button class="on" data-v="bytes">Bytes</button><button data-v="bits">Bits</button><button data-v="packets">Packets</button></div>
+            <select id="ov-win" aria-label="Time window"><option value="60">Last minute</option><option value="300" selected>Last 5 minutes</option><option value="1800">Last 30 minutes</option><option value="3600">Last hour</option></select>
+          </div>
+        </div>
+        <canvas id="ov-chart" role="img" aria-label="Incoming and outgoing traffic per second"></canvas>
+        <div class="tr-legend"><span><i class="dot in"></i>Incoming (above the line)</span><span><i class="dot out"></i>Outgoing (below the line)</span><span id="ov-hover" class="tr-hover"></span></div>
+      </section>
+      <section class="tr-totals" aria-label="Totals">
+        <dl>
+          <div><dt>Incoming now</dt><dd id="t-in-now">0</dd></div>
+          <div><dt>Outgoing now</dt><dd id="t-out-now">0</dd></div>
+          <div><dt>Incoming total</dt><dd id="t-in">0</dd></div>
+          <div><dt>Outgoing total</dt><dd id="t-out">0</dd></div>
+          <div><dt>Connections</dt><dd id="t-conn">0</dd></div>
+          <div><dt>Remote hosts</dt><dd id="t-hosts">0</dd></div>
+          <div><dt>Blacklisted</dt><dd id="t-bl">0</dd></div>
+          <div><dt>Running for</dt><dd id="t-time">0 s</dd></div>
+        </dl>
+      </section>
+    </div>
+    <div class="tr-sortbar"><span>Rank by</span>
+      <div class="tr-seg small" id="ov-sort"><button class="on" data-v="bytes">Data</button><button data-v="packets">Packets</button></div></div>
+    <div class="tr-lists">
+      <section><h2 class="card-title">Hosts</h2><div id="l-hosts" class="tr-list"></div></section>
+      <section><h2 class="card-title">Services</h2><div id="l-services" class="tr-list"></div></section>
+      <section><h2 class="card-title">Programs</h2><div id="l-programs" class="tr-list"></div></section>
+      <section><h2 class="card-title">Countries</h2><div id="l-countries" class="tr-list"></div></section>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONNECTIONS ============ -->
+<div class="tr-pane" id="pane-connections" hidden>
+  <div class="tr-filterbar">
+    <input id="f-q" type="search" placeholder="Search address, port, host, service, program, country, AS…" aria-label="Search connections">
+    <select id="f-sort" aria-label="Sort">
+      <option value="bytes_desc">Most data</option><option value="bytes_asc">Least data</option><option value="packets_desc">Most packets</option><option value="packets_asc">Fewest packets</option>
+      <option value="last_desc">Latest activity</option><option value="last_asc">Oldest activity</option><option value="first_desc">Newest connection</option><option value="first_asc">Oldest connection</option>
+    </select>
+    <button class="btn secondary small" id="f-more">More filters</button>
+    <button class="btn secondary small" id="f-clear">Clear</button>
+    <span class="tr-spacer"></span>
+    <a class="btn secondary small" id="f-csv" href="#">Download CSV report</a>
+  </div>
+  <div class="tr-filters-adv" id="f-adv" hidden>
+    <label>Program<input data-f="app"></label><label>Host<input data-f="domain"></label><label>Country<input data-f="country"></label>
+    <label>AS<input data-f="asn"></label><label>Protocol<input data-f="proto" placeholder="TCP"></label><label>Service<input data-f="service"></label>
+    <label>IP address<input data-f="ip"></label><label>Port<input data-f="port"></label>
+    <label>Direction<select data-f="direction"><option value="">Both</option><option value="incoming">Incoming</option><option value="outgoing">Outgoing</option></select></label>
+    <label class="chk"><input type="checkbox" data-f="favorite"> Favorites only</label><label class="chk"><input type="checkbox" data-f="blacklisted"> Blacklisted only</label>
+    <p class="tr-hint">Start a value with <b>=</b> for an exact match (for example <b>=https</b>).</p>
+  </div>
+  <div class="tr-split">
+    <div class="tr-tablewrap">
+      <table class="tr-table" id="c-table"><thead><tr>
+        <th></th><th>Source</th><th>Destination</th><th>Protocol</th><th>Service</th><th>Remote host</th><th>Program</th><th class="num">Data</th><th class="num">Packets</th><th>Last seen</th></tr></thead><tbody></tbody></table>
+      <div id="c-empty" class="tr-empty small" hidden>No connections match.</div>
+      <div class="tr-pager"><button class="btn secondary small" id="c-prev">Previous</button><span id="c-page">Page 1 of 1</span><button class="btn secondary small" id="c-next">Next</button><span id="c-total" class="tr-hint"></span></div>
+    </div>
+    <aside class="tr-detail" id="c-detail" hidden aria-live="polite"></aside>
+  </div>
+</div>
+
+<!-- ============ NOTIFICATIONS ============ -->
+<div class="tr-pane" id="pane-notifications" hidden>
+  <div class="tr-two">
+    <section>
+      <h2 class="card-title">When to notify</h2>
+      <fieldset class="tr-rule"><legend><label><input type="checkbox" id="n-data-on"> Traffic above a limit</label></legend>
+        <div class="tr-row"><label>Limit per second <input id="n-data-th" placeholder="e.g. 5M"></label>
+        <label>Measured in <select id="n-data-unit"><option value="bytes">bytes</option><option value="bits">bits</option><option value="packets">packets</option></select></label>
+        <label>Sound <select id="n-data-sound" data-sound></select></label></div>
+        <p class="tr-hint">Counts incoming plus outgoing in one second. Use k, M, G: <b>500k</b>, <b>2.5M</b>, <b>1G</b>. The message lists the busiest hosts and services of that second.</p></fieldset>
+      <fieldset class="tr-rule"><legend><label><input type="checkbox" id="n-fav-on"> A favorite sends or receives data</label></legend>
+        <div class="tr-row"><label>Sound <select id="n-fav-sound" data-sound></select></label></div>
+        <p class="tr-hint">Favorites are the hosts, services and programs you starred in Overview or Connections.</p></fieldset>
+      <fieldset class="tr-rule"><legend><label><input type="checkbox" id="n-bl-on"> A blacklisted address is contacted</label></legend>
+        <div class="tr-row"><label>Sound <select id="n-bl-sound" data-sound></select></label></div>
+        <p class="tr-hint">Add a blacklist file in Settings.</p></fieldset>
+      <label class="tr-vol">Sound volume <input type="range" id="n-vol" min="0" max="100"><output id="n-vol-out"></output></label>
+    </section>
+    <section>
+      <h2 class="card-title">Where to send it</h2>
+      <p class="tr-hint">Every notification is also written to the log below and to the audit log.</p>
+      <fieldset class="tr-rule"><legend><label><input type="checkbox" id="n-mail-on"> Email the admin group</label></legend>
+        <div class="tr-row"><label>At most one email every <input id="n-mail-int" type="number" min="10" style="width:80px"> seconds</label></div>
+        <p class="tr-hint">Uses the SMTP settings and admin addresses already configured in Settings.</p></fieldset>
+      <fieldset class="tr-rule"><legend><label><input type="checkbox" id="n-sms-on"> SMS</label></legend>
+        <div class="tr-row"><label>Numbers (one per line)<textarea id="n-sms-nums" rows="2"></textarea></label><label>At most one every <input id="n-sms-int" type="number" min="10" style="width:80px"> s</label></div></fieldset>
+      <fieldset class="tr-rule"><legend><label><input type="checkbox" id="n-call-on"> Voice call</label></legend>
+        <div class="tr-row"><label>Numbers (one per line)<textarea id="n-call-nums" rows="2"></textarea></label><label>At most one every <input id="n-call-int" type="number" min="10" style="width:80px"> s</label></div></fieldset>
+      <fieldset class="tr-rule"><legend><label><input type="checkbox" id="n-hook-on"> Webhook</label></legend>
+        <div class="tr-row"><label>URL (receives a JSON POST)<input id="n-hook-url" placeholder="https://…" style="width:100%"></label></div></fieldset>
+      <div class="tr-start-row"><button class="btn" id="n-save">Save notification settings</button><button class="btn secondary" id="n-test">Send a test</button><span id="n-msg" class="tr-hint"></span></div>
+    </section>
+  </div>
+  <section class="tr-logbox"><div class="tr-chart-head"><h2 class="card-title">Notification log</h2><button class="btn secondary small" id="n-clear">Clear log</button></div>
+    <div id="n-log" class="tr-tablewrap"></div></section>
+</div>
+
+<!-- ============ HISTORY ============ -->
+<div class="tr-pane" id="pane-history" hidden>
+  <div class="tr-split">
+    <div class="tr-tablewrap"><table class="tr-table" id="h-table"><thead><tr><th>Started</th><th>Source</th><th>Filter</th><th>Status</th><th class="num">Incoming</th><th class="num">Outgoing</th><th class="num">Connections</th><th></th></tr></thead><tbody></tbody></table>
+      <div id="h-empty" class="tr-empty small" hidden>No captures yet.</div></div>
+    <aside class="tr-detail" id="h-detail" hidden></aside>
+  </div>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div class="tr-pane" id="pane-settings" hidden>
+  <div class="tr-two">
+    <section>
+      <h2 class="card-title">Country and AS databases</h2>
+      <p class="tr-hint">Net-monit ships with GeoLite2 databases. You can point to newer or different MaxMind-format (.mmdb) files, for example GeoLite2 or IPinfo Lite.</p>
+      <label>Country database path <input id="s-country" placeholder="(bundled)"></label>
+      <label>AS database path <input id="s-asn" placeholder="(bundled)"></label>
+      <p id="s-geo-status" class="tr-hint"></p>
+      <h2 class="card-title" style="margin-top:22px">Reverse DNS</h2>
+      <label class="chk"><input type="checkbox" id="s-rdns"> Look up host names of remote addresses (uses your DNS server)</label>
+    </section>
+    <section>
+      <h2 class="card-title">IP blacklist</h2>
+      <p class="tr-hint">A text file with one IP address or CIDR range per line; <b>#</b> starts a comment. Connections to listed addresses are flagged and can trigger a notification.</p>
+      <label>Upload a blacklist <input type="file" id="s-bl-file" accept=".txt,.csv,.list"></label>
+      <label>or path on this server <input id="s-bl" placeholder="C:\lists\blacklist.txt"></label>
+      <p id="s-bl-status" class="tr-hint"></p>
+      <h2 class="card-title" style="margin-top:22px">History</h2>
+      <label>Keep captures and notifications for <input id="s-ret" type="number" min="1" max="3650" style="width:80px"> days</label>
+      <h2 class="card-title" style="margin-top:22px">Start automatically</h2>
+      <label class="chk"><input type="checkbox" id="s-auto"> Start the current network-card or NetFlow capture whenever Net-monit starts</label>
+    </section>
+  </div>
+  <div class="tr-start-row"><button class="btn" id="s-save">Save settings</button><span id="s-msg" class="tr-hint"></span></div>
+  <p class="tr-attrib">Traffic analysis is a Python port of the engine of <a href="https://github.com/GyulyVGC/sniffnet" target="_blank" rel="noopener">Sniffnet</a> (MIT / Apache-2.0). IP geolocation and AS data are GeoLite2 data created by <a href="https://www.maxmind.com" target="_blank" rel="noopener">MaxMind</a>. Service names come from the nmap services list.</p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/traffic.js"></script>
+{% endblock %}

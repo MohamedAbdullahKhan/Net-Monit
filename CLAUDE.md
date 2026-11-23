@@ -143,3 +143,36 @@ Lesson: when a save "feels slow", count the requests the page makes after it, no
 
 **Buttons.** Notify windows (Devices, Settings), dashboard device window and custom-view editor: Save (stay open) /
 Save & close / Cancel (close, nothing saved). Escalation tab: All devices / All sites / Current search / filter.
+
+
+## V12.0: Traffic Analyzer (Sniffnet integration), port 50120
+
+**What.** New sidebar page Traffic (`/traffic`, admin only) = Python port of Sniffnet 1.5.1's engine on Flask + SQLite. Package `monitor/traffic/`:
+`netutil` (bogon, direction, traffic type, local), `services` (+ `data/services.txt`, `categories.txt`), `parser` (frames -> Packet), `engine` (accounting, per-second ticks,
+resolver, program lookup), `flows` (NetFlow v5/v9 + IPFIX decoder + UDP collector), `geo` (.mmdb country/ASN, GeoLite2 + IPinfo), `blacklist`, `softfilter` (BPF subset),
+`capture_linux` (AF_PACKET + pcap writer), `notify` (rules + delivery), `store` (SQLite tables traffic_*), `manager` (sources, lifecycle, persistence), `api` (/api/traffic/*).
+UI: `templates/traffic.html`, `static/js/traffic.js`, `static/css/traffic.css`. Tests: `tests/test_traffic_parity.py` (Sniffnet's own cases), `test_traffic_engine.py`, `test_traffic_api.py`, `ui_traffic.js`.
+
+**Decisions / lessons.**
+- scapy's native BPF attach silently drops EVERYTHING when tcpdump is missing: never rely on it. The built-in filter is used whenever it understands the expression; native BPF only for exotic syntax and only if libpcap/tcpdump exists (never on Linux).
+- scapy's Linux L2 socket delivers loopback packets twice; the native AF_PACKET sniffer ignores PACKET_OUTGOING on `lo`.
+- Mark a finished import as finished only AFTER its final database save (API readers raced the save).
+- Country filter = ISO code only (substring of the name made "US" match "Australia").
+- Capture files must live in `data/traffic` (confinement); upload cap 500 MB; webhook http/https only; flow exporter allow-list; CSV cells that start with = + - @ are neutralised; all names from DNS/packets are HTML-escaped in the UI.
+- Linux service unit grants `CAP_NET_RAW` (AmbientCapabilities) so the unprivileged service user can capture. Program names need root.
+- Version bump touched installers/docs only for functional tokens; historical "V11.3 patch NN" comments are intentionally unchanged.
+
+
+## V12.0 patch 01 (Windows service fix, Npcap-free capture)
+- Symptom: V12.0 Windows service starts and stops at once. Leading hypothesis (not confirmed without the user's service.log): port 50120 falls into a Windows reserved range (Hyper-V/WSL/Docker; WinError 10013) and the service stops when its web server dies. The ports 50xxx are in the dynamic range, so this can differ per machine. Fix: `monitor/portcheck.py` (`pick_port`, `remember`), used by `install_service._bootstrap` and `app.py __main__`; chosen port in `data/active_port.txt`; installer reads it.
+- The Windows service does NOT call `app.initialize()`: anything new that must run at service start has to be called from `install_service._bootstrap` too (`traffic_startup()` now is).
+- Npcap: the free edition forbids redistribution and has no silent install (only the paid OEM edition), so it cannot be bundled like Python. Instead `capture_windows.RawWindowsSniffer` (raw IP sockets, SIO_RCVALL, link type RAW, no MAC/VLAN, no loopback) is the default on Windows; Npcap/scapy is used automatically when `wpcap.dll` exists. NOT verified on a real Windows machine (fake-socket tests only).
+- Installer (`Setup-Windows.ps1`, PowerShell cannot be run in the build sandbox): after pip it imports all packages and reports failures; after service start it reads `data\active_port.txt`. Tested the Python side on real Python 3.11 with `sys.stdout/stderr = None` (like pythonw).
+- Lesson: validate against the Python version the INSTALLER installs (3.11), not the newest one; ports in 50000+ may be reserved on Windows.
+
+
+## V12.2 (port 5050; folder C:\NetMonit-V12.2; service Net_Monit_V122 / netmonit-v122)
+- Base = V12.0 + patch 01. Changes: default port 5050 (3 code defaults: app.py APP_PORT, install_service.py APP_PORT, wizard APP_PORT); portcheck.windows_port_problem (netsh excludedportrange = hard skip, dynamicport = warning); setup/Install-Npcap.ps1 (OEM /S silent, else signed download + guided wizard, never blocks setup); About shows live port; scanner still recognises 50113/50120.
+- Why the V12.0 service died: never captured (no service.log from the user). Port 50120 was inside the Windows dynamic range; moving to 5050 fixed it. Treat as the leading explanation, not proven.
+- Npcap: /S is OEM-only, free edition not redistributable, 5-system cap. Do not bundle it. Do not automate clicks.
+- Upgrade package V11.8-to-V12.2 (upgrade_to_v122.py): detects old port (config.yaml server.port > service registry env / systemd unit > active_port.txt > old app.py default) and rewrites the NETMON_PORT default in the new app.py/install_service.py to that port; backs up everything it replaces; pip install; restart; health check; auto-rollback if the dashboard does not answer.

@@ -1,16 +1,16 @@
 # =============================================================================
-# Net-monit V11.3 -- Windows Service Manager
+# Net-monit V12.4 -- Windows Service Manager
 # Copyright (c) 2024-2026 Abdullah | Abdullah-InfoXtek.com
 # Contact: abuabdullah.be@outlook.com
-# Dashboard: http://localhost:50113  (default port — can be overridden)
+# Dashboard: http://localhost:5050  (default port — can be overridden)
 # =============================================================================
 """
-install_service.py  --  Net-monit V11.3
+install_service.py  --  Net-monit V12.4
 
 Port and service name are read from environment variables so the setup
 wizard can pass user-chosen values without modifying this file:
-    NETMON_PORT      default 50113
-    NETMON_SVC_NAME  default Net_Monit_V113
+    NETMON_PORT      default 5050
+    NETMON_SVC_NAME  default Net_Monit_V124
 
 Usage (run as Administrator from the install directory):
     python install_service.py install
@@ -33,10 +33,10 @@ for _n, _mode in (("stdin", "r"), ("stdout", "w"), ("stderr", "w")):
         except Exception:
             pass
 
-APP_VERSION  = "11.3"
+APP_VERSION  = "12.4"
 # --- Read from env so wizard can override without changing this file ---
-APP_PORT     = int(os.environ.get("NETMON_PORT",     50113))
-SVC_NAME     = os.environ.get("NETMON_SVC_NAME",     "Net_Monit_V113")
+APP_PORT     = int(os.environ.get("NETMON_PORT",     5050))
+SVC_NAME     = os.environ.get("NETMON_SVC_NAME",     "Net_Monit_V124")
 SVC_DISPLAY  = os.environ.get("NETMON_SVC_DISPLAY",  f"Net-monit V{APP_VERSION} Network Monitor")
 # -----------------------------------------------------------------------
 SVC_DESC     = f"Net-monit V{APP_VERSION} dashboard at http://localhost:{APP_PORT}"
@@ -84,6 +84,24 @@ def _bootstrap():
     port = cfg.get("server", {}).get("port", APP_PORT)
 
     sched.start_scheduler(cfg)
+    try:
+        import app as _appmod
+        _appmod.traffic_startup()                      # V12: the service does not call initialize(), so start the Traffic Analyzer here
+    except Exception:
+        log.exception("Traffic Analyzer startup failed (the rest of Net-monit keeps running)")
+
+    # V12: a port that Windows reserves (Hyper-V/WSL/Docker excluded ranges) or that another program holds used to stop the service.
+    from monitor import portcheck
+    chosen, why = portcheck.pick_port(port)
+    if why:
+        log.warning("%s", why)
+    port = chosen
+    portcheck.remember(BASE_DIR, port)
+    try:
+        import app as _appmod2
+        _appmod2.APP_PORT = port
+    except Exception:
+        pass
 
     ssl_ctx  = None
     ssl_cert = os.environ.get("NETMON_SSL_CERT", "")
