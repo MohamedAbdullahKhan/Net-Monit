@@ -1,10 +1,10 @@
-# Net-monit V11.3 — Admin Guide
+# Net-monit V12.4 — Admin Guide
 
 This guide covers day-to-day administration: configuring alerts, adding monitored devices/services, managing users, and using the Admin panel. For installation, see the Setup Guide. For a plain end-user walkthrough of the dashboard, see the User Guide.
 
 ## 1. Signing in
 
-Log in with your admin account at `http://<server>:50113`. Admin accounts can see the Admin panel (top nav) and every Settings tab; regular user accounts see the dashboard and monitoring pages but not user management or SMTP/escalation configuration.
+Log in with your admin account at `http://<server>:5050`. Admin accounts can see the Admin panel (top nav) and every Settings tab; regular user accounts see the dashboard and monitoring pages but not user management or SMTP/escalation configuration.
 
 ## 2. Adding devices to monitor
 
@@ -168,3 +168,36 @@ Every monitor has a **Type** (what it is: Network device, Router, **Switch**, **
 **Dashboard: double-click a tile.** The device window shows what the device is, how it is checked, its live status and last error, and every threshold that applies to it with **Comes from** (built-in, All devices, method ..., type ..., or this device). Type a value to give that one device its own thresholds, or clear the boxes to inherit, then **Save thresholds**. **Edit device settings** and **Notifications & escalation** open the full screens for that device. Only administrators can open it (a viewer is asked to sign in as an administrator). It does not open while the dashboard is in tile-edit mode, and double-clicking a button inside a tile does nothing.
 
 **Devices page (V11.3 patch 05).** The Devices page has the same **Type / Method** filter bar and a **Group by** list (Nothing, Type, Method). Grouping puts the devices under headings such as "Firewall (3)" or "Ping (ICMP) (8)"; a heading disappears when the filter hides all of its devices. Your choice is remembered while the browser tab is open.
+
+
+---
+
+# V12.x additions (V12.4)
+
+## Roles
+- **Admin:** everything, including **Traffic**, Admin panel, Settings, License.
+- **Viewer:** dashboard only; host addresses are masked; Traffic is hidden and its API answers 403 (it shows addresses and host names).
+
+## Port policy (V12.4)
+- Default **5050**. Never use a port of 49152 or higher: Windows uses that range for outgoing connections and Hyper-V/WSL/Docker reserve blocks inside it, which can make the service start and stop at once.
+- Net-monit checks the port at start: an *excluded* range is skipped automatically (next free port is used and written to `data\active_port.txt`); a port in the dynamic range only logs a warning.
+- Change the port: stop the service → `config.yaml` → `server: port: N` → start → open the firewall for N. Update bookmarks and any NetFlow/monitoring links.
+- Upgraded installs keep their old port (for example 50113). That is deliberate; it still works but sits in the dynamic range. Moving to 5050 is recommended when convenient.
+
+## Daily operation of the Traffic Analyzer
+1. **One capture at a time**; it runs inside the service and survives closing the browser, logoff and browser crashes.
+2. Use **Start automatically** (Traffic → Settings) for the capture that should always run after a reboot.
+3. Look at **History** weekly: size of captures, busiest hosts. Delete what you do not need; retention default is 30 days.
+4. Set the three notification rules to values that are rare in normal operation (for example data limit = 3 × your normal peak) and use **Send a test** after any change.
+5. Keep the blacklist file small and current (one IP or CIDR per line). Entries load immediately after upload.
+6. NetFlow: always fill **Only accept from**.
+7. Privacy: captures contain IP addresses, host names and (with *Save packets*) full packet contents. Restrict access to `data\traffic\`; the files are not encrypted.
+
+## Backup and restore
+Stop the service, copy `data\` (database `monitor.db`, `traffic\` captures), `config.yaml` and `secret.key`; start the service. To restore, stop, copy back, start. The license is tied to the install folder, so restore into the **same folder**.
+
+## Monitoring Net-monit itself
+`logs\service.log` (service), `data\active_port.txt` (port really in use), **About** (version, patches, port). If the dashboard does not open: services.msc → status; then the log; then the A5 checklist in the Complete Setup Guide.
+
+## Upgrade from V11.x (patch 08) or V12.0/V12.1
+Use the package **Net-monit-V11.8-to-V12.4-Upgrade**. It keeps data, config, license, service name and **port**, backs up everything it replaces, restarts the service, checks the dashboard on the same port and rolls back automatically if it does not answer. Details: `DOC-Patching-Guide.md`.

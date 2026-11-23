@@ -1,5 +1,5 @@
 # =============================================================================
-# Net-monit V11.3 -- Network Scanner (Context-Safe Edition)
+# Net-monit V12.4 -- Network Scanner (Context-Safe Edition)
 # Copyright (c) 2024-2026 Abdullah | Abdullah-InfoXtek.com
 # =============================================================================
 """
@@ -48,7 +48,9 @@ PORT_PROBES = {
     50110: "Net-monit", # V11.0
     50111: "Net-monit", # V11.1
     50112: "Net-monit", # V11.2
-    50113: "Net-monit", # V11.3 -- current
+    50113: "Net-monit", # V11.3-V11.8 (keep recognizing)
+    50120: "Net-monit", # V12.0 / V12.1
+    5050: "Net-monit", # V12.4 -- current
     8080: "HTTP-Alt",
     8443: "HTTPS-Alt",
     9100: "Printer",
@@ -376,7 +378,7 @@ def _identify_device_type(open_ports: list[int], udp_ports: list[int] | None = N
     if 23 in ports:        return "Network Device (Telnet)"
     if 9100 in ports:      return "Network Printer"
     if 3306 in ports:      return "Database Server"
-    if 5086 in ports or 5087 in ports or 5088 in ports or 50100 in ports or 50101 in ports or 50102 in ports or 50103 in ports or 50104 in ports or 50105 in ports or 50106 in ports or 50107 in ports or 50108 in ports or 50109 in ports or 50110 in ports or 50111 in ports or 50112 in ports or 50113 in ports: return "Net-monit Server"
+    if 5086 in ports or 5087 in ports or 5088 in ports or 50100 in ports or 50101 in ports or 50102 in ports or 50103 in ports or 50104 in ports or 50105 in ports or 50106 in ports or 50107 in ports or 50108 in ports or 50109 in ports or 50110 in ports or 50111 in ports or 50112 in ports or 50113 in ports or 50120 in ports or 5050 in ports: return "Net-monit Server"
     if ports or udp:       return "Network Device"
     return "Host"
 

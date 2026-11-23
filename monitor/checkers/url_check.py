@@ -1,6 +1,6 @@
 # =============================================================================
-# Net-monit V11.3 -- URL / Web Application (Sites) Monitor
-# Copyright (c) 2024-2026 Net-monit V11.3 -- Developed by Abdullah -- InfoXtek.com
+# Net-monit V12.4 -- URL / Web Application (Sites) Monitor
+# Copyright (c) 2024-2026 Net-monit V12.4 -- Developed by Abdullah -- InfoXtek.com
 # =============================================================================
 """
 url_check.py

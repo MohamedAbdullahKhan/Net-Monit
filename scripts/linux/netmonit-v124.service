@@ -1,0 +1,28 @@
+[Unit]
+Description=Net-monit V12.4 Network Monitor
+Documentation=https://Abdullah-InfoXtek.com
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netmonit
+Group=netmonit
+# V12 Traffic Analyzer: lets the service capture packets without running as root
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+WorkingDirectory=/opt/netmonit-v124
+ExecStart=/opt/netmonit-v124/venv/bin/python /opt/netmonit-v124/app.py
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=120
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonit-v124
+Environment=PYTHONUNBUFFERED=1
+Environment=NETMON_PORT=5050
+Environment=NETMON_SVC_NAME=netmonit-v124
+
+[Install]
+WantedBy=multi-user.target

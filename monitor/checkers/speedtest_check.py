@@ -1,5 +1,5 @@
 # =============================================================================
-# Net-monit V11.3 -- Speed Test Checker
+# Net-monit V12.4 -- Speed Test Checker
 # Copyright (c) 2024-2026 Abdullah | Abdullah-InfoXtek.com
 # =============================================================================
 """
@@ -124,6 +124,10 @@ def _new_connection(target, timeout):
     """One place that creates connections (tests redirect this at a local server)."""
     if target.scheme == "https":
         ctx = ssl.create_default_context()
+        try:                                  # V12.4 patch 01: Python 3.13+ turns VERIFY_X509_STRICT on; firewalls / proxies that inspect
+            ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT   # HTTPS present certificates that fail it, so every stream died and no download ran
+        except (AttributeError, ValueError):
+            pass
         if not target.verify_tls:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
@@ -781,7 +785,7 @@ def check(device: dict, progress_cb=None, info_cb=None) -> dict:
     """
     t0 = time.perf_counter()
     cfg = _speedtest_config()
-    engine = str(os.environ.get("NETMON_SPEEDTEST_ENGINE") or cfg.get("engine") or "builtin").strip().lower()
+    engine = str(os.environ.get("NETMON_SPEEDTEST_ENGINE") or cfg.get("engine") or "auto").strip().lower()   # V12.4: auto = nearby ISP server first, Cloudflare second
     if engine not in ("auto", "builtin"):
         log.warning("speedtest.engine %r not recognised (use auto or builtin); using builtin", engine)
         engine = "builtin"
@@ -824,8 +828,22 @@ def check(device: dict, progress_cb=None, info_cb=None) -> dict:
 
     # 2 ── built-in test: configured targets first (in the order listed), then Cloudflare
     targets = _configured_targets(cfg) + [_cloudflare_target()]
+    cli_tried = (engine == "auto")
     for target in targets:
         res = _test_target(target, progress_cb, info_cb)
+        if res is not None and res.get("download_mbps") is None and not cli_tried:
+            # V12.4: the target answered (upload/ping worked) but gave no download -- Cloudflare rate-limiting (HTTP 429/503) is the usual reason.
+            # Try the Speedtest.net engine instead of showing "--".
+            cli_tried = True
+            if info_cb is not None:
+                try: info_cb({"engine": "speedtest-cli", "target": ""})
+                except Exception: pass
+            cli = _try_speedtest_cli(progress_cb)
+            if cli:
+                dl, ul, lat, label, host = cli
+                return _finish({"download_mbps": dl, "upload_mbps": ul, "latency_ms": lat, "jitter_ms": 0.0, "server": label or "Speedtest.net",
+                                "method_used": "speedtest-cli", "warning": "",
+                                "note": f"Measured with speedtest-cli against {label or 'a Speedtest.net server'} (the Cloudflare test was rate-limited, so Net-monit switched engine)."})
         if res is not None:
             res["note"] = (_cloudflare_note(res) if target.kind == "cloudflare"
                            else f"Measured against {res['server']} ({res['host']}), round trip {res['latency_ms']} ms.")

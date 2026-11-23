@@ -1,11 +1,11 @@
-# Net-monit V11.3 — Setup Guide
+# Net-monit V12.4 — Setup Guide
 
-This guide walks through installing Net-monit V11.3 on a Windows or Linux machine. It's written for whoever is doing the install — usually an IT admin — and assumes no prior familiarity with the product.
+This guide walks through installing Net-monit V12.4 on a Windows or Linux machine. It's written for whoever is doing the install — usually an IT admin — and assumes no prior familiarity with the product.
 
 ## Before you start
 
 - **One machine on your network** to host Net-monit (Windows 10/11/Server, or a modern Linux distribution). This machine will do the monitoring — it needs network access to whatever you want to monitor, outbound SMTP access for email alerts, outbound HTTPS for SMS/voice gateway alerts, and outbound HTTPS to speed.cloudflare.com if end users will use the browser-based "Test Your PC Speed" speed test.
-- **Port 50113** must be free on that machine (this is Net-monit V11.3's port — note the port number *is* the version, so this differs from your previous version if you're upgrading, e.g. V8.8, which used 5088).
+- **Port 5050** must be free on that machine (this is Net-monit V12.4's port — note the port number *is* the version, so this differs from your previous version if you're upgrading, e.g. V8.8, which used 5088).
 - **Python 3.9 or newer** (3.11 recommended; the installer checks this on Windows and downloads Python 3.11 if it is missing; most Linux distributions already have it).
 - **A license key** — see "Activation" below. You can also start a trial without one.
 
@@ -13,12 +13,12 @@ This guide walks through installing Net-monit V11.3 on a Windows or Linux machin
 
 > **Prefer a click-by-click version?** See `DOC-Setup-Windows-Ready.md` (installer, written for non-technical users) or `DOC-Setup-Python-Manual.md` (run it yourself with Python). `DOC-App-Workflow.md` explains how the whole app works.
 
-1. **Copy the Net-monit V11.3 folder** to the machine (any location — the installer will offer to move it to `C:\NetMonit-V11.3` by default).
+1. **Copy the Net-monit V12.4 folder** to the machine (any location — the installer will offer to move it to `C:\NetMonit-V12.4` by default).
 2. **Run `Setup.bat`** as Administrator. This launches the graphical setup wizard.
-3. The wizard checks for Python, installs any missing pip dependencies, and asks where to install (default `C:\NetMonit-V11.3`).
+3. The wizard checks for Python, installs any missing pip dependencies, and asks where to install (default `C:\NetMonit-V12.4`).
 4. If a previous Net-monit service is already running on this machine (e.g. you're upgrading from V8.8), the wizard **stops it first**, before making any changes — this ordering matters and is deliberate, so don't run the old and new versions' installers in parallel.
-5. The wizard registers a Windows Service named `Net_Monit_V113` (via `sc.exe`), pointed at `pythonw.exe` so no console window stays open.
-6. Once registration completes, the service starts automatically and the wizard opens your browser to `http://localhost:50113`.
+5. The wizard registers a Windows Service named `Net_Monit_V124` (via `sc.exe`), pointed at `pythonw.exe` so no console window stays open.
+6. Once registration completes, the service starts automatically and the wizard opens your browser to `http://localhost:5050`.
 7. **First-run:** you'll land on the Activation screen if no license/trial is active yet (see Activation below), otherwise straight to a login screen with a seeded default admin account — check the wizard's final screen, it displays the generated default admin password once, so **note it down before closing the wizard**.
 
 ### Alternate Windows path: PowerShell installer
@@ -27,22 +27,22 @@ If you prefer scripting the install (e.g. for imaging multiple machines), `setup
 
 ## Linux installation
 
-1. Copy the Net-monit V11.3 folder to the target machine, e.g. `/opt/netmonit-v113-src` (temporary — the installer relocates it).
+1. Copy the Net-monit V12.4 folder to the target machine, e.g. `/opt/netmonit-v124-src` (temporary — the installer relocates it).
 2. From that folder, run:
    ```bash
    sudo ./setup.sh
    ```
-3. This installs Python dependencies (via `pip`), copies the application to `/opt/netmonit-v113`, and installs a **systemd service** named `netmonit-v113` (`scripts/linux/netmonit-v113.service`).
+3. This installs Python dependencies (via `pip`), copies the application to `/opt/netmonit-v124`, and installs a **systemd service** named `netmonit-v124` (`scripts/linux/netmonit-v124.service`).
 4. The installer enables and starts the service:
    ```bash
-   sudo systemctl enable netmonit-v113
-   sudo systemctl start netmonit-v113
+   sudo systemctl enable netmonit-v124
+   sudo systemctl start netmonit-v124
    ```
 5. Check it's running:
    ```bash
-   sudo systemctl status netmonit-v113
+   sudo systemctl status netmonit-v124
    ```
-6. Open `http://<this-machine's-IP>:50113` from any browser on the network.
+6. Open `http://<this-machine's-IP>:5050` from any browser on the network.
 
 ## Activation
 
@@ -66,7 +66,7 @@ On first launch you'll see the Activation screen if there's no valid license yet
 
 **Steps on Windows**
 
-1. Open **File Explorer** and go to the Net-monit install folder (by default `C:\NetMonit-V11.3`).
+1. Open **File Explorer** and go to the Net-monit install folder (by default `C:\NetMonit-V12.4`).
 2. Right-click the file `config.yaml`, choose **Open with**, then **Notepad**.
 3. Near the top, find the block that starts with `# speedtest:` (it sits just above the line `server:`).
 4. Delete the `#` and the single space after it at the start of these lines — keep every other space exactly as it is, because the indentation matters:
@@ -78,14 +78,14 @@ On first launch you'll see the Activation screen if there's no valid license yet
    ```
    Replace `HQ Dubai` with any name you like, and the `url` with your server's address.
 5. Choose **File → Save**. Do not rename the file.
-6. Restart the service: press the **Windows key**, type `services.msc`, press **Enter**, find **Net_Monit_V113** in the list, right-click it and choose **Restart**.
+6. Restart the service: press the **Windows key**, type `services.msc`, press **Enter**, find **Net_Monit_V124** in the list, right-click it and choose **Restart**.
 7. Open the **Speed Test** page and click **Test WAN Speed**. The status line should now show your server's name and its round-trip time, and the **Target** column in the log shows it too.
 
 **Steps on Linux**
 
 1. Open the file: `sudo nano <install folder>/config.yaml` (the install folder is where you ran `setup.sh`).
 2. Remove the `#` and one space from the start of the `speedtest:` lines shown above, change the name and address, save (Ctrl+O, Enter) and exit (Ctrl+X).
-3. Restart: `sudo systemctl restart netmonit-v113`.
+3. Restart: `sudo systemctl restart netmonit-v124`.
 
 **Good to know**
 
@@ -93,21 +93,21 @@ On first launch you'll see the Activation screen if there's no valid license yet
 - The file uses **spaces, never tabs**. If the service will not start after an edit, a tab or a missing space is the usual cause — the log file in the install folder's `logs/` folder names the line.
 - `engine: builtin` (under `speedtest:`) tells Net-monit to skip the optional speedtest-cli library and always use its own test. The default, `auto`, tries speedtest-cli first and falls back to the built-in test.
 
-## Upgrading to V11.3
+## Upgrading to V12.4
 
 If you're upgrading an existing V8.8 install, or any install from V10.0 to V11.2, rather than doing a fresh install, the steps are the same either way -- only which old service/port/directory you're moving from changes.
 
-1. **License key.** A key is tied to the **Activation Code** of one installation, and that code includes the install folder. V11.3 installs into its own new folder, so the new installation shows a new Device ID / Activation Code and needs its own key. Copy both values from the new installation's Activation screen and request the key (free; see "Activation" above). Keys from **V10.9 and earlier** never work in V11.x (see item 10). The 30-day trial is available while you wait.
+1. **License key.** A key is tied to the **Activation Code** of one installation, and that code includes the install folder. V12.4 installs into its own new folder, so the new installation shows a new Device ID / Activation Code and needs its own key. Copy both values from the new installation's Activation screen and request the key (free; see "Activation" above). Keys from **V10.9 and earlier** never work in V11.x (see item 10). The 30-day trial is available while you wait.
 2. **Your existing data is safe.** No database columns were removed or renamed this release. Devices, alert history, and settings all carry over. Saved thresholds keep working unchanged.
-3. Because the port and service name change with every release (5088 -> 50100 -> 50101 -> 50102 -> 50103 -> 50104 -> 50105 -> 50106 -> 50107 -> 50108 -> 50109 -> 50110 -> 50111 -> 50112 -> 50113 and `Net_Monit_V88` -> `Net_Monit_V100` -> `Net_Monit_V101` -> `Net_Monit_V102` -> `Net_Monit_V103` -> `Net_Monit_V104` -> `Net_Monit_V105` -> `Net_Monit_V106` -> `Net_Monit_V107` -> `Net_Monit_V108` -> `Net_Monit_V109` -> `Net_Monit_V110` -> `Net_Monit_V111` -> `Net_Monit_V112` -> `Net_Monit_V113`), V11.3 installs **side-by-side** with whatever you had before rather than replacing it in place -- the Windows/Linux installers will stop and remove the *old* service as part of installing the new one (see step 4 of the Windows section above), but the install directories are different (`C:\\NetMonit-V8.8`, `C:\\NetMonit-V10.0`, `C:\\NetMonit-V10.1`, `C:\\NetMonit-V10.2`, `C:\\NetMonit-V10.3`, `C:\\NetMonit-V10.4`, `C:\\NetMonit-V10.5`, `C:\\NetMonit-V10.6`, `C:\\NetMonit-V10.7`, `C:\\NetMonit-V10.8`, `C:\\NetMonit-V10.9`, `C:\\NetMonit-V11.0` vs. `C:\\NetMonit-V11.1`), so keep your old install directory around until you've confirmed V11.1 is working, then remove it manually.
-4. **Copy your `data/monitor.db` file** from the old install directory into the new one before first starting the V11.3 service, if you want to carry over devices, alert history, and settings. Alternatively, use the **Admin Panel -> Backup & Restore** export/import feature from your old install before upgrading, and restore it once V11.1 is up -- this is the recommended path. If you added a `speedtest:` section to `config.yaml`, copy those lines across too.
-5. Update any firewall rules that reference your old port (5088, 50100, 50101, 50102, 50103, 50104, 50105, 50106, 50107, 50108, 50109, 50110, 50111, 50112) to also allow 50113.
+3. Because the port and service name change with every release (5088 -> 50100 -> 50101 -> 50102 -> 50103 -> 50104 -> 50105 -> 50106 -> 50107 -> 50108 -> 50109 -> 50110 -> 50111 -> 50112 -> 5050 and `Net_Monit_V88` -> `Net_Monit_V100` -> `Net_Monit_V101` -> `Net_Monit_V102` -> `Net_Monit_V103` -> `Net_Monit_V104` -> `Net_Monit_V105` -> `Net_Monit_V106` -> `Net_Monit_V107` -> `Net_Monit_V108` -> `Net_Monit_V109` -> `Net_Monit_V110` -> `Net_Monit_V111` -> `Net_Monit_V112` -> `Net_Monit_V124`), V12.4 installs **side-by-side** with whatever you had before rather than replacing it in place -- the Windows/Linux installers will stop and remove the *old* service as part of installing the new one (see step 4 of the Windows section above), but the install directories are different (`C:\\NetMonit-V8.8`, `C:\\NetMonit-V10.0`, `C:\\NetMonit-V10.1`, `C:\\NetMonit-V10.2`, `C:\\NetMonit-V10.3`, `C:\\NetMonit-V10.4`, `C:\\NetMonit-V10.5`, `C:\\NetMonit-V10.6`, `C:\\NetMonit-V10.7`, `C:\\NetMonit-V10.8`, `C:\\NetMonit-V10.9`, `C:\\NetMonit-V11.0` vs. `C:\\NetMonit-V11.1`), so keep your old install directory around until you've confirmed V11.1 is working, then remove it manually.
+4. **Copy your `data/monitor.db` file** from the old install directory into the new one before first starting the V12.4 service, if you want to carry over devices, alert history, and settings. Alternatively, use the **Admin Panel -> Backup & Restore** export/import feature from your old install before upgrading, and restore it once V11.1 is up -- this is the recommended path. If you added a `speedtest:` section to `config.yaml`, copy those lines across too.
+5. Update any firewall rules that reference your old port (5088, 50100, 50101, 50102, 50103, 50104, 50105, 50106, 50107, 50108, 50109, 50110, 50111, 50112) to also allow 5050.
 6. If you're coming from V8.8 specifically: your admin account's access token upgrades automatically to a stronger storage format (PBKDF2, not the older plain SHA-256) the next time that account successfully logs in -- nothing you need to do, it happens transparently on sign-in. If you're already on V10.0 or later, this already happened.
-7. **Check you are really on the new version.** After installing, the browser tab title and the About page must say **V11.3**, and the address must end in **:50113**. Every version keeps its own port, so an old bookmark (for example one ending in `:50112`) opens the *old* service, not the one you just installed. Also, Python does not pick up changed files while a service is running -- if you ever copy new files over an existing install by hand, restart the service afterwards.
-8. **What V11.3 changes**
-   - **No change to how monitoring works.** V11.3 is the "ready to publish" release: new step-by-step guides, `DOC-Setup-Windows-Ready.md`, `DOC-Setup-Python-Manual.md` and `DOC-App-Workflow.md`, and a live demo web page for the GitHub repository.
+7. **Check you are really on the new version.** After installing, the browser tab title and the About page must say **V12.4**, and the address must end in **:5050**. Every version keeps its own port, so an old bookmark (for example one ending in `:50112`) opens the *old* service, not the one you just installed. Also, Python does not pick up changed files while a service is running -- if you ever copy new files over an existing install by hand, restart the service afterwards.
+8. **What V12.4 changes**
+   - **No change to how monitoring works.** V12.4 is the "ready to publish" release: new step-by-step guides, `DOC-Setup-Windows-Ready.md`, `DOC-Setup-Python-Manual.md` and `DOC-App-Workflow.md`, and a live demo web page for the GitHub repository.
    - **`config.yaml` no longer contains the two sample monitors** ("Test Router" and a Google check). A fresh install starts with an empty monitor list.
-   - Version, port and service name move to V11.3 / 50113 / `Net_Monit_V113`.
+   - Version, port and service name move to V12.4 / 5050 / `Net_Monit_V124`.
 9. **What V11.2 changed (still applies)**
    - **Threshold tables are short and clean.** Each metric now shows only its name, unit, *Enabled*, *Warning* and *Critical* boxes. The explanation (what it means, which direction raises an alert, the allowed minimum and maximum, the recommended values, what a healthy value looks like) is behind a small **!** button beside the metric name. **Point at the ! and read it for as long as the pointer stays there; click it to keep the box open, and close it with the X** (or press Esc).
    - **"Per-device / per-site threshold overrides" is grouped into two collapsible categories, Devices and Sites**, and each monitor's active thresholds are shown as compact chips instead of one long line. Bold = overridden for that monitor.
@@ -157,21 +157,21 @@ Small updates (bug fixes, small features) come as a patch zip that replaces only
 
 ## Uninstalling
 
-- **Windows:** run `Uninstall.bat` as Administrator (stops and removes the `Net_Monit_V113` service, offers to delete the install directory and data).
-- **Linux:** run `scripts/linux/uninstall.sh` as root (stops, disables, and removes the systemd unit; offers to delete `/opt/netmonit-v113`).
+- **Windows:** run `Uninstall.bat` as Administrator (stops and removes the `Net_Monit_V124` service, offers to delete the install directory and data).
+- **Linux:** run `scripts/linux/uninstall.sh` as root (stops, disables, and removes the systemd unit; offers to delete `/opt/netmonit-v124`).
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
-| Browser can't reach `http://localhost:50113` | Service isn't running — check `sc query Net_Monit_V113` (Windows) or `systemctl status netmonit-v113` (Linux). Also confirm nothing else is using port 50113. |
+| Browser can't reach `http://localhost:5050` | Service isn't running — check `sc query Net_Monit_V124` (Windows) or `systemctl status netmonit-v124` (Linux). Also confirm nothing else is using port 5050. |
 | Activation says "Invalid license key" | Paste the **whole** key (starts with `NM1-`, about 127 characters with dashes). It must have been made for the exact Device ID and Activation Code shown on this screen -- a different install folder, a different PC or a reinstall gives a different Activation Code, so the vendor must issue a key for the new values. |
 | Activation says "old-format key" / "New license key required" | The key was issued before V11.0. Those keys are no longer accepted. Send the Device ID and Activation Code from this screen to your vendor and enter the new key. |
 | I set a threshold and it says "must be lower than critical" or "outside the allowed range" | The warning must be on the *milder* side of the critical: lower for time/percent metrics, **higher** for *SSL certificate expires in (days)*. Use **Fill recommended values** to start from sensible numbers. |
 | A website alert says "SSL certificate expires in ... below 30 days" | The certificate is close to expiry. Renew it. To be told earlier or later, change the warning in Settings > Thresholds > Website metrics. |
-| Service is installed but the dashboard will not open; it only works when I run `python app.py` | See **"Service installed but dashboard not opening"** below. The shipped V11.3 files fix the known cause (an edited `speedtest_check.py`, or a service with no console). Use the V11.3 files unmodified. |
-| WAN test shows only "Complete ... via speedtest-cli" and the gauge does not move | You are on a build that lets the `speedtest-cli` library run (V10.8) or `config.yaml` has `engine: auto`. Use V11.3 (default `builtin`) and remove `engine: auto`. |
-| Speed test shows "HTTP 429" or "connection errors" | The test server (Cloudflare) is rate-limiting repeated tests from your public IP. Wait 5-10 minutes and run one test. V11.3 slows down and says "rate-limited"; a figure shown with that message can read low. |
+| Service is installed but the dashboard will not open; it only works when I run `python app.py` | See **"Service installed but dashboard not opening"** below. The shipped V12.4 files fix the known cause (an edited `speedtest_check.py`, or a service with no console). Use the V12.4 files unmodified. |
+| WAN test shows only "Complete ... via speedtest-cli" and the gauge does not move | You are on a build that lets the `speedtest-cli` library run (V10.8) or `config.yaml` has `engine: auto`. Use V12.4 (default `builtin`) and remove `engine: auto`. |
+| Speed test shows "HTTP 429" or "connection errors" | The test server (Cloudflare) is rate-limiting repeated tests from your public IP. Wait 5-10 minutes and run one test. V12.4 slows down and says "rate-limited"; a figure shown with that message can read low. |
 | Installer says Python not found (Windows) | Install Python 3.10+ from python.org and re-run `Setup.bat`. |
 | Service starts then immediately stops | Check the log file in the install directory's `logs/` folder for the actual startup error — usually a missing pip dependency or a `config.yaml` syntax error. |
 | Alert emails never arrive | Check Settings → SMTP is configured and saved, and that the host machine can reach your SMTP server on its configured port (some networks block outbound 25/587 by default). |
@@ -188,17 +188,17 @@ For anything else, see the Admin Guide (day-to-day operation) or the User Guide 
 
 Do these in order. Stop as soon as the dashboard opens.
 
-1. **Use clean V11.3 files.** Delete the folder you installed from, extract the V11.3 zip again, and do **not** edit any `.py` file. Edited files are the most common reason for this problem.
+1. **Use clean V12.4 files.** Delete the folder you installed from, extract the V12.4 zip again, and do **not** edit any `.py` file. Edited files are the most common reason for this problem.
 2. **Remove the old service.** Right-click `Uninstall.bat` and choose **Run as administrator**. Follow the prompts. (Old versions keep their own service and port, so an old service can stay behind.)
 3. **Install again.** Right-click `Setup.bat` and choose **Run as administrator**. Finish every screen of the wizard.
-4. **Check the service is running.** Press the Windows key, type `services.msc`, press Enter. Find **Net-monit V11.3 Network Monitor**. The Status column must say **Running**. If it does not, right-click it and choose **Start**.
-5. **Open the dashboard.** In a browser go to `http://localhost:50113` (use your own port if you changed it in the wizard).
-6. **Still not opening? Read the log.** Open the install folder (default `C:\NetMonit-V11.3`), then the `logs` folder, then open `service.log` in Notepad and scroll to the bottom. Look for a line containing `ERROR`, `Traceback` or `crashed`. Copy the last 30 lines.
+4. **Check the service is running.** Press the Windows key, type `services.msc`, press Enter. Find **Net-monit V12.4 Network Monitor**. The Status column must say **Running**. If it does not, right-click it and choose **Start**.
+5. **Open the dashboard.** In a browser go to `http://localhost:5050` (use your own port if you changed it in the wizard).
+6. **Still not opening? Read the log.** Open the install folder (default `C:\NetMonit-V12.4`), then the `logs` folder, then open `service.log` in Notepad and scroll to the bottom. Look for a line containing `ERROR`, `Traceback` or `crashed`. Copy the last 30 lines.
 7. **Run it in the foreground to see the real error.** Press the Windows key, type `cmd`, right-click **Command Prompt**, choose **Run as administrator**, then type these two lines, pressing Enter after each:
 
    ```
-   cd C:\NetMonit-V11.3
+   cd C:\NetMonit-V12.4
    venv\Scripts\python.exe install_service.py debug
    ```
    Read the message printed on screen. Press `Ctrl+C` to stop it when done. Send the output together with the 30 log lines from step 6 to support.
-8. **Port already in use?** In the same Command Prompt type `netstat -ano | findstr :50113`. If a line appears, another program uses that port: re-run `Setup.bat` and choose a different port.
+8. **Port already in use?** In the same Command Prompt type `netstat -ano | findstr :5050`. If a line appears, another program uses that port: re-run `Setup.bat` and choose a different port.

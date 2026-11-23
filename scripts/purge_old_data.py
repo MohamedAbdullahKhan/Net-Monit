@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # =============================================================================
-# Net-monit V11.3 — Weekly data purge script
+# Net-monit V12.4 — Weekly data purge script
 # Copyright (c) 2024-2026 Abdullah. All rights reserved.
 # Contact: abuabdullah.be@outlook.com
 # =============================================================================
@@ -62,7 +62,7 @@ def format_bytes(n):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Net-monit V11.3 — weekly data purge")
+    parser = argparse.ArgumentParser(description="Net-monit V12.4 — weekly data purge")
     parser.add_argument("--metric-history-days", type=int, default=30,
                         help="Keep this many days of metric_history (default: 30)")
     parser.add_argument("--alert-days",          type=int, default=90,
@@ -83,7 +83,7 @@ def main():
     conn     = connect()
     size_before = DB_PATH.stat().st_size
 
-    print(f"Net-monit V11.3 — Data Purge {'(DRY RUN) ' if args.dry_run else ''}")
+    print(f"Net-monit V12.4 — Data Purge {'(DRY RUN) ' if args.dry_run else ''}")
     print(f"Database : {DB_PATH}")
     print(f"Size     : {format_bytes(size_before)}")
     print()

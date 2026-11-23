@@ -1,4 +1,4 @@
-# Net-monit V11.3 — How the app works, start to finish
+# Net-monit V12.4 — How the app works, start to finish
 
 GitHub draws the diagrams below automatically. Words in **bold** are the names you see on screen.
 
@@ -79,12 +79,12 @@ flowchart TD
   P -->|no| D[Download and install Python 3.11] --> W
   P -->|yes| W[Setup Wizard]
   W --> I[Copy files, create venv, pip install]
-  I --> R[Register Windows Service Net_Monit_V113]
-  R --> B[Browser opens http://localhost:50113]
+  I --> R[Register Windows Service Net_Monit_V124]
+  R --> B[Browser opens http://localhost:5050]
   B --> T[Log in with the first-run token]
   T --> K[Activation: 30-day trial or license key]
 ```
-Linux: `sudo bash setup.sh` does the same with a systemd service `netmonit-v113`. Manual run: `python app.py` (see `DOC-Setup-Python-Manual.md`).
+Linux: `sudo bash setup.sh` does the same with a systemd service `netmonit-v124`. Manual run: `python app.py` (see `DOC-Setup-Python-Manual.md`).
 
 ## 5. License workflow
 ```mermaid

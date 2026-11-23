@@ -1,12 +1,12 @@
 # =============================================================================
-# Net-monit V11.3
+# Net-monit V12.4
 # Copyright (c) 2024-2026 Abdullah. All rights reserved.
 # Contact: abuabdullah.be@outlook.com
 # Unauthorised copying, modification or distribution of this software
 # is strictly prohibited without prior written permission from the author.
 # =============================================================================
 """
-email_notifier.py  —  Net-monit V11.3
+email_notifier.py  —  Net-monit V12.4
 Multi-level escalation + default admin/support CC on all alerts.
 
 Routing rules:
@@ -29,13 +29,13 @@ from monitor import threshold_meta
 # import: app.py imports this module, not the other way around), so it
 # has to be updated here too, or it silently goes stale in every email
 # even after the rest of the app has moved on to a newer version.
-APP_VERSION = "11.3"
+APP_VERSION = "12.4"
 
 # Fallback only -- used if no one has ever loaded a page in this app yet
 # (so app.py's before_request hook hasn't had a chance to record anything).
 # In every normal situation, _portal_url() below returns the address the
 # admin/user most recently actually accessed the app with instead.
-_FALLBACK_PORTAL_URL = "http://localhost:50113"
+_FALLBACK_PORTAL_URL = "http://localhost:5050"
 
 
 def _portal_url() -> str:

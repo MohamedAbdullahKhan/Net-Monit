@@ -1,5 +1,5 @@
 # =============================================================================
-# Net-monit V11.3 -- Windows Service Installer (standalone repair/reinstall)
+# Net-monit V12.4 -- Windows Service Installer (standalone repair/reinstall)
 # Copyright (c) 2024-2026 Abdullah | Abdullah-InfoXtek.com
 # Run as Administrator
 # =============================================================================
@@ -17,12 +17,12 @@ if (-not $isAdmin) { Write-Host "ERROR: Run as Administrator." -ForegroundColor 
 
 # Read from registry if not supplied
 function Get-Reg([string]$name, [string]$default) {
-    try { return (Get-ItemProperty "HKLM:\SOFTWARE\NetMonit-V11.3" -EA SilentlyContinue).$name }
+    try { return (Get-ItemProperty "HKLM:\SOFTWARE\NetMonit-V12.4" -EA SilentlyContinue).$name }
     catch { return $default }
 }
-if (!$InstallPath)  { $InstallPath  = Get-Reg "InstallPath" "$env:SystemDrive\NetMonit-V11.3" }
-if (!$ServiceName)  { $ServiceName  = Get-Reg "ServiceName" "Net_Monit_V113" }
-if ($Port -eq 0)    { $Port         = [int](Get-Reg "Port" 50113) }
+if (!$InstallPath)  { $InstallPath  = Get-Reg "InstallPath" "$env:SystemDrive\NetMonit-V12.4" }
+if (!$ServiceName)  { $ServiceName  = Get-Reg "ServiceName" "Net_Monit_V124" }
+if ($Port -eq 0)    { $Port         = [int](Get-Reg "Port" 5050) }
 
 $SvcScript = Join-Path $InstallPath "install_service.py"
 if (-not (Test-Path $SvcScript)) {
@@ -46,7 +46,7 @@ if (!$PythonExe -or !(Test-Path $PythonExe)) {
 }
 
 Write-Host ""
-Write-Host "  Net-monit V11.3 Service Installer" -ForegroundColor Cyan
+Write-Host "  Net-monit V12.4 Service Installer" -ForegroundColor Cyan
 Write-Host "  ===================================" -ForegroundColor Cyan
 Write-Host "  Install path : $InstallPath"
 Write-Host "  Python       : $PythonExe"
@@ -78,7 +78,7 @@ Write-Host "Step 3/4  Registering service..." -ForegroundColor Yellow
 Set-Location $InstallPath
 $env:NETMON_PORT        = "$Port"
 $env:NETMON_SVC_NAME    = $ServiceName
-$env:NETMON_SVC_DISPLAY = "Net-monit V11.3 Network Monitor"
+$env:NETMON_SVC_DISPLAY = "Net-monit V12.4 Network Monitor"
 $result = & $PythonExe $SvcScript install 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Registration failed." -ForegroundColor Red

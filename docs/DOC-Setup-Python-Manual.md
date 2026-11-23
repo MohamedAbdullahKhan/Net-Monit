@@ -1,4 +1,4 @@
-# Net-monit V11.3 — Python setup (run it yourself, step by step)
+# Net-monit V12.4 — Python setup (run it yourself, step by step)
 
 Use this when you do not want the Windows installer, when you are on Linux or macOS for a test, or when you are developing. Net-monit then runs in a terminal window; closing the window stops it. To keep it running all the time, see "Run it as a service" at the end.
 
@@ -18,8 +18,8 @@ If you get an error or an old version, install Python from python.org (Windows: 
 ## 2. Open a terminal in the project folder
 Extract the zip (or clone the repository), then:
 ```
-cd path\to\Net-monit-V11.3          (Windows)
-cd path/to/Net-monit-V11.3          (Linux / macOS)
+cd path\to\Net-monit-V12.4          (Windows)
+cd path/to/Net-monit-V12.4          (Linux / macOS)
 ```
 You should see `app.py` and `requirements.txt` when you list the folder.
 
@@ -56,7 +56,7 @@ Token : <a random token>
 Copy the token now (it is also saved in `data/FIRST-RUN-ADMIN-TOKEN.txt` until you log in).
 
 ## 6. Open the dashboard
-In a browser go to `http://localhost:50113`. Log in with `admin@email.com` and the token, change the password in the Admin Panel, then choose **Start a trial** on the Activation screen.
+In a browser go to `http://localhost:5050`. Log in with `admin@email.com` and the token, change the password in the Admin Panel, then choose **Start a trial** on the Activation screen.
 
 ## 7. Add something to monitor
 Devices page > add a device (for example a router's IP address with the *Ping* method), or the Sites page for a website. Within one polling interval (30 seconds by default) it appears on the dashboard as **Healthy**, **Warning**, **Critical** or **Offline**.
@@ -75,12 +75,12 @@ Press **Ctrl+C** in the terminal.
 
 ## Run it as a service (stays on after you log out)
 - **Windows:** open Command Prompt **as administrator** in the folder, with the venv activated, and run `python install_service.py install`. Then `python install_service.py status`.
-- **Linux:** `sudo bash setup.sh` installs it as a systemd service (`netmonit-v113`) and starts it.
+- **Linux:** `sudo bash setup.sh` installs it as a systemd service (`netmonit-v124`) and starts it.
 
 ## Common problems
 | What you see | What to do |
 |---|---|
 | `ModuleNotFoundError` | The venv is not active. Run the activate command from step 3, then step 4 again. |
-| `Address already in use` | Another program uses port 50113. Set `NETMON_PORT` to another number. |
+| `Address already in use` | Another program uses port 5050. Set `NETMON_PORT` to another number. |
 | Browser can't connect from another PC | Allow the port in the firewall and use the host PC's IP address, not `localhost`. |
 | Lost the first-run token | Stop the app, delete `data/monitor.db`, start again for a **new** admin token. This also deletes your monitors and history. |

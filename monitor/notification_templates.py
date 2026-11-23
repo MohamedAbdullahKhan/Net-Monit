@@ -64,7 +64,7 @@ PLACEHOLDERS = [
      "description": "Per-state dark background color for the email card (a subtly different tint for warning/critical/offline/recovered)."},
     {"key": "timestamp", "required": True, "example": "2026-08-20 14:32:10",
      "description": "When this alert was generated."},
-    {"key": "portal_url", "required": True, "example": "http://192.168.3.7:50113",
+    {"key": "portal_url", "required": True, "example": "http://192.168.3.7:5050",
      "description": "THE DASHBOARD LINK. Automatically matches however your team actually accesses the server (PC name or IP) -- see app.py's _remember_access_host()."},
     {"key": "app_version", "required": False, "example": "8.4",
      "description": "Current Net-monit version, normally shown in the footer."},

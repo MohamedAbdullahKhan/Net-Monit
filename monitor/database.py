@@ -21,7 +21,7 @@ _lock = threading.RLock()   # V11.3 patch 06: re-entrant, so batch() can hold it
 
 
 _local = threading.local()
-_wal_done = False
+_wal_done = set()        # database files already switched to WAL (per FILE: a restored or replaced file must be re-checked)
 
 
 def _open_connection():
@@ -29,12 +29,11 @@ def _open_connection():
     process (it used to be re-issued, as a write, on EVERY connection); synchronous=NORMAL is the recommended
     setting for WAL (no fsync per commit; still crash-safe for the application); busy_timeout makes a save wait
     for the scheduler's write instead of failing."""
-    global _wal_done
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    if not _wal_done:
+    if str(DB_PATH) not in _wal_done:
         conn.execute("PRAGMA journal_mode=WAL;")
-        _wal_done = True
+        _wal_done.add(str(DB_PATH))
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA busy_timeout=30000;")
     conn.execute("PRAGMA foreign_keys=ON;")
@@ -1101,12 +1100,11 @@ def get_scan_history(limit: int = 20) -> list:
 # V7.2: System-wide settings (admin-configured defaults, e.g. default theme)
 # =============================================================================
 
-_sys_table_ok = False
+_sys_table_ok = set()      # per database FILE, so a restored/replaced file gets its table again
 
 
 def _ensure_system_settings_table():
-    global _sys_table_ok
-    if _sys_table_ok:
+    if str(DB_PATH) in _sys_table_ok:
         return
     conn = get_connection()
     with conn:
@@ -1117,7 +1115,7 @@ def _ensure_system_settings_table():
             )
         """)
     conn.close()
-    _sys_table_ok = True
+    _sys_table_ok.add(str(DB_PATH))
 
 
 def get_system_setting(key: str, default=None):

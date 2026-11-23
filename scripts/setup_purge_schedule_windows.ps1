@@ -1,5 +1,5 @@
 # =============================================================================
-# Net-monit V11.3 - Install weekly purge scheduled task (Windows)
+# Net-monit V12.4 - Install weekly purge scheduled task (Windows)
 # Run once in an elevated (Administrator) PowerShell.
 # =============================================================================
 $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
