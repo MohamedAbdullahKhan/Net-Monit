@@ -1,5 +1,5 @@
 /* =============================================================================
-   Net-monit V11.3 -- shared threshold table (Settings > Thresholds, Settings notify modal, Devices notify modal)
+   Net-monit V12.4 -- shared threshold table (Settings > Thresholds, Settings notify modal, Devices notify modal)
    -----------------------------------------------------------------------------
    Renders from GET /api/threshold-meta (monitor/threshold_meta.py is the single source of truth), so a
    website shows website metrics (response time, SSL days left, SSL handshake, DNS, TCP connect) and a

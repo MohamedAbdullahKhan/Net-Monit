@@ -1,5 +1,5 @@
 /* =============================================================================
- * Net-monit V11.3
+ * Net-monit V12.4
  * Copyright (c) 2024-2026 Abdullah. All rights reserved.
  * Contact: abuabdullah.be@outlook.com
  * ============================================================================= */
@@ -296,7 +296,7 @@ async function loadAdminSystem(){
     const summary = stat.summary||{};
     c.innerHTML=`
       <div class="info-grid">
-        <div class="info-tile"><div class="info-val" style="color:var(--accent)">V${stat.version||"11.3"}</div><div class="info-lbl">App Version</div></div>
+        <div class="info-tile"><div class="info-val" style="color:var(--accent)">V${stat.version||"12.4"}</div><div class="info-lbl">App Version</div></div>
         <div class="info-tile"><div class="info-val">${devs.length}</div><div class="info-lbl">Total Devices</div></div>
         <div class="info-tile"><div class="info-val" style="color:var(--status-ok)">${summary.ok||0}</div><div class="info-lbl">Healthy</div></div>
         <div class="info-tile"><div class="info-val" style="color:var(--status-warning)">${summary.warning||0}</div><div class="info-lbl">Warning</div></div>
@@ -305,7 +305,7 @@ async function loadAdminSystem(){
       </div>
       <div style="margin-top:14px;">
         <p style="font-size:12px;color:var(--text-muted);">Server time: ${new Date((stat.server_time||Date.now()/1000)*1000).toLocaleString()}</p>
-        <p style="font-size:12px;color:var(--text-muted);">© 2024–2026 Net-monit V11.3 — Developed by Abdullah — InfoXtek.com</p>
+        <p style="font-size:12px;color:var(--text-muted);">© 2024–2026 Net-monit V12.4 — Developed by Abdullah — InfoXtek.com</p>
       </div>`;
   }catch(e){ console.error("loadAdminSystem",e); }
 }
